@@ -2,7 +2,46 @@
 
 Real-time retail analytics from CCTV footage. Converts raw video → structured events → queryable metrics API.
 
-## Setup (5 commands)
+## Quick Start (pre-computed events — no GPU needed)
+
+Pre-processed event files from the Brigade Bangalore clips are committed at `dataset/events/`. Use this path to get live metrics in under 60 seconds without re-running the detection pipeline.
+
+```powershell
+# 1. Start the API
+docker compose up --build -d
+
+# 2. Wait ~15 seconds for the container to be ready, then verify
+curl http://localhost:8000/health
+
+# 3. Ingest the pre-computed events (takes ~5 seconds)
+python -c "
+import json, glob, urllib.request
+for ef in sorted(glob.glob('dataset/events/*.jsonl')):
+    events = [json.loads(l) for l in open(ef) if l.strip()]
+    if not events:
+        continue
+    acc = 0
+    for i in range(0, len(events), 500):
+        batch = events[i:i+500]
+        req = urllib.request.Request(
+            'http://localhost:8000/events/ingest',
+            json.dumps({'events': batch}).encode(),
+            {'Content-Type': 'application/json'}, method='POST')
+        res = json.loads(urllib.request.urlopen(req).read())
+        acc += res.get('accepted', 0)
+    print(f'{ef.split(\"/\")[-1]}: {acc} events ingested')
+print('Done — metrics ready.')
+"
+
+# 4. Check metrics
+curl http://localhost:8000/stores/ST1008/metrics
+curl http://localhost:8000/stores/ST1008/funnel
+curl http://localhost:8000/stores/ST1008/anomalies
+```
+
+## Full Setup (re-run detection pipeline from raw clips)
+
+Only needed if you want to re-process the CCTV footage yourself.
 
 ```bash
 # 1. Clone and enter project
@@ -25,14 +64,19 @@ curl http://localhost:8000/health
 
 ## Running the Detection Pipeline
 
-### Windows (PowerShell)
+Place your clips at `dataset/clips/ST1008/CAM 1.mp4` through `CAM 5.mp4`, then:
+
 ```powershell
-# Make sure your clips are at: dataset\clips\ST1008\CAM 1.mp4 ... CAM 5.mp4
+# Processes CAM 1-3, CAM 5 — skips CAM 4 storeroom automatically
+python run_pipeline.py
 
-# Run all cameras (processes CAM 1-3, CAM 5 — skips CAM 4 storeroom automatically)
-python pipeline/run.bat
+# With live ingest into the running API
+python run_pipeline.py --api-url http://localhost:8000
+```
 
-# OR run each camera manually
+### Manual per-camera commands (Windows PowerShell)
+
+```powershell
 python -m pipeline.detect --video "dataset/clips/ST1008/CAM 1.mp4" --store ST1008 --camera CAM_FLOOR_01 --layout dataset/store_layout.json --output dataset/events/ST1008_CAM_FLOOR_01_events.jsonl --clip-start 2026-04-10T10:00:00Z
 
 python -m pipeline.detect --video "dataset/clips/ST1008/CAM 2.mp4" --store ST1008 --camera CAM_FLOOR_02 --layout dataset/store_layout.json --output dataset/events/ST1008_CAM_FLOOR_02_events.jsonl --clip-start 2026-04-10T10:00:00Z
@@ -40,23 +84,21 @@ python -m pipeline.detect --video "dataset/clips/ST1008/CAM 2.mp4" --store ST100
 python -m pipeline.detect --video "dataset/clips/ST1008/CAM 3.mp4" --store ST1008 --camera CAM_ENTRY_01 --layout dataset/store_layout.json --output dataset/events/ST1008_CAM_ENTRY_01_events.jsonl --clip-start 2026-04-10T10:00:00Z
 
 python -m pipeline.detect --video "dataset/clips/ST1008/CAM 5.mp4" --store ST1008 --camera CAM_BILLING_01 --layout dataset/store_layout.json --output dataset/events/ST1008_CAM_BILLING_01_events.jsonl --clip-start 2026-04-10T10:00:00Z
-# CAM 4 is the storeroom — pipeline skips it automatically
+# CAM 4 is the storeroom — skipped automatically
 ```
 
-### Ingest events into API
-```powershell
-# After pipeline runs, ingest all event files
-python pipeline/run.bat --api-url http://localhost:8000
+### Ingest after manual pipeline run
 
-# Or ingest one file manually
+```powershell
 python -c "
-import json, urllib.request
-events = [json.loads(l) for l in open('dataset/events/ST1008_CAM_ENTRY_01_events.jsonl') if l.strip()]
-for i in range(0, len(events), 500):
-    batch = events[i:i+500]
-    req = urllib.request.Request('http://localhost:8000/events/ingest',
-        json.dumps({'events': batch}).encode(), {'Content-Type': 'application/json'}, method='POST')
-    print(json.loads(urllib.request.urlopen(req).read()))
+import json, glob, urllib.request
+for ef in sorted(glob.glob('dataset/events/*.jsonl')):
+    events = [json.loads(l) for l in open(ef) if l.strip()]
+    for i in range(0, len(events), 500):
+        req = urllib.request.Request('http://localhost:8000/events/ingest',
+            json.dumps({'events': events[i:i+500]}).encode(),
+            {'Content-Type': 'application/json'}, method='POST')
+        print(json.loads(urllib.request.urlopen(req).read()))
 "
 ```
 
@@ -72,12 +114,14 @@ for i in range(0, len(events), 500):
 | `GET /health` | Service status, STALE_FEED detection |
 
 ## Live Dashboard (Terminal)
+
 ```powershell
-# While API is running and events are flowing:
+# While API is running and events are ingested:
 python dashboard/live.py --store ST1008 --api http://localhost:8000
 ```
 
 ## Running Tests
+
 ```powershell
 pytest tests/ -v --cov=app --cov-report=term-missing
 ```
@@ -93,6 +137,7 @@ pytest tests/ -v --cov=app --cov-report=term-missing
 | CAM 5.mp4 | CAM_BILLING_01 | Billing counter | POS laptop, accessories display |
 
 ## Project Structure
+
 ```
 store-intelligence/
 ├── pipeline/
@@ -122,7 +167,12 @@ store-intelligence/
 │   └── CHOICES.md         # 3 key engineering decisions
 ├── dataset/
 │   ├── store_layout.json  # Zone polygons + camera mappings
-│   └── pos_transactions.csv
+│   ├── pos_transactions.csv
+│   └── events/            # Pre-computed pipeline output (committed)
+│       ├── ST1008_CAM_ENTRY_01_events.jsonl
+│       ├── ST1008_CAM_FLOOR_01_events.jsonl
+│       ├── ST1008_CAM_FLOOR_02_events.jsonl
+│       └── ST1008_CAM_BILLING_01_events.jsonl
 ├── docker-compose.yml
 ├── Dockerfile
 └── requirements.txt

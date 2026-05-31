@@ -8,5 +8,4 @@ __pycache__/
 *.pt
 *.onnx
 dataset/clips/
-dataset/events/
 dataset/camera_samples/

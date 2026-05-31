@@ -10,15 +10,12 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# Default uniform HSV ranges — UPDATE these after inspecting actual clips.
-# Format: (lower_hsv, upper_hsv)
-# These are placeholder ranges. Run `pipeline/calibrate_staff.py` to tune.
 DEFAULT_UNIFORM_RANGES = [
-    # Example: dark navy blue uniform
-    (np.array([100, 50, 20]), np.array([130, 255, 150])),
-    # Example: red polo shirt
-    (np.array([0, 100, 100]), np.array([10, 255, 255])),
-    (np.array([170, 100, 100]), np.array([180, 255, 255])),
+    # Brigade Bangalore (ST1008): staff wear all-black uniforms
+    # Strict very-dark only (V < 45) — avoids dark jeans/shadows on customers
+    (np.array([0,   0,   0]), np.array([180, 255, 45])),
+    # Dark + truly low saturation (charcoal/near-black fabrics)
+    (np.array([0,   0,   0]), np.array([180,  50, 45])),
 ]
 
 # FIX (Issue N2): Raised from 0.25 to 0.40 to reduce staff false-positive rate.
