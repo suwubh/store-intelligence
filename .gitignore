@@ -1,0 +1,14 @@
+@"
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.coverage
+*.db
+*.pt
+*.onnx
+dataset/clips/
+dataset/events/
+dataset/camera_samples/
+"@ | Out-File -FilePath .gitignore -Encoding utf8

@@ -1,0 +1,32 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Git
+.git/
+.gitignore
+
+# CCTV clips — large video files, mounted as volume not baked into image
+dataset/clips/
+
+# Generated pipeline output — not needed in API image
+dataset/events/
+dataset/camera_samples/
+
+# YOLO weights — downloaded at runtime if needed, not part of API
+yolov8s.pt
+*.pt
+*.onnx
+
+# Logs and temp
+*.log
+*.tmp
+store_intelligence.db
+
+# IDE
+.vscode/
+.idea/
