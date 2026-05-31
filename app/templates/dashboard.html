@@ -1,767 +1,783 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Store Intelligence Dashboard</title>
-    <!-- Google Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <!-- Chart.js CDN -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-        :root {
-            --bg-color: #0b0f19;
-            --panel-bg: rgba(17, 24, 39, 0.7);
-            --border-color: rgba(255, 255, 255, 0.08);
-            --text-main: #f3f4f6;
-            --text-muted: #9ca3af;
-            --primary: #6366f1; /* Indigo */
-            --primary-glow: rgba(99, 102, 241, 0.15);
-            --accent-teal: #14b8a6;
-            --accent-pink: #d946ef;
-            --success: #10b981;
-            --warning: #f59e0b;
-            --danger: #ef4444;
-            --font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        }
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Store Intelligence — ST1008</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
+    :root {
+      --bg:        #0a0a0a;
+      --surface:   #111111;
+      --border:    #222222;
+      --border-hi: #333333;
+      --amber:     #e8a400;
+      --amber-dim: #7a5500;
+      --green:     #3ddc84;
+      --green-dim: #1a5e38;
+      --red:       #ff4545;
+      --red-dim:   #5e1a1a;
+      --blue:      #4d9fff;
+      --text:      #d4d4d4;
+      --text-dim:  #666666;
+      --text-mute: #444444;
+      --mono:      'IBM Plex Mono', monospace;
+      --sans:      'IBM Plex Sans', sans-serif;
+    }
 
-        body {
-            background-color: var(--bg-color);
-            background-image: 
-                radial-gradient(at 10% 10%, rgba(99, 102, 241, 0.1) 0px, transparent 50%),
-                radial-gradient(at 90% 90%, rgba(217, 70, 239, 0.07) 0px, transparent 50%);
-            color: var(--text-main);
-            font-family: var(--font-family);
-            min-height: 100vh;
-            padding: 2rem;
-            line-height: 1.5;
-            overflow-x: hidden;
-        }
+    html, body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.5;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
 
-        /* Container & Layout */
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-            display: flex;
-            flex-direction: column;
-            gap: 2rem;
-        }
+    /* Scanline overlay */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,0.03) 2px,
+        rgba(0,0,0,0.03) 4px
+      );
+      pointer-events: none;
+      z-index: 9999;
+    }
 
-        /* Header */
-        header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding-bottom: 1.5rem;
-            border-bottom: 1px solid var(--border-color);
-            flex-wrap: wrap;
-            gap: 1rem;
-        }
+    /* ── Layout ── */
+    .shell {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 0;
+    }
 
-        .brand {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-        }
+    /* ── Header ── */
+    .header {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      padding: 14px 24px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
 
-        .brand-logo {
-            width: 2.5rem;
-            height: 2.5rem;
-            background: linear-gradient(135deg, var(--primary), var(--accent-pink));
-            border-radius: 0.75rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 0 15px rgba(99, 102, 241, 0.4);
-            font-weight: 800;
-            font-size: 1.25rem;
-            color: #fff;
-        }
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
 
-        .brand-text h1 {
-            font-size: 1.5rem;
-            font-weight: 700;
-            background: linear-gradient(to right, #ffffff, #d8b4fe);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            letter-spacing: -0.025em;
-        }
+    .logo-mark {
+      width: 28px;
+      height: 28px;
+      border: 1px solid var(--amber);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--amber);
+      letter-spacing: 0.05em;
+      flex-shrink: 0;
+    }
 
-        .brand-text p {
-            font-size: 0.85rem;
-            color: var(--text-muted);
-        }
+    .header-title {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
 
-        .controls {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-        }
+    .header-title span {
+      color: var(--text-dim);
+      font-weight: 300;
+    }
 
-        .store-selector {
-            background: var(--panel-bg);
-            border: 1px solid var(--border-color);
-            color: var(--text-main);
-            padding: 0.6rem 1.2rem;
-            border-radius: 0.75rem;
-            font-family: var(--font-family);
-            font-weight: 600;
-            font-size: 0.9rem;
-            outline: none;
-            cursor: pointer;
-            backdrop-filter: blur(10px);
-            transition: all 0.3s ease;
-        }
+    .header-center {
+      font-size: 10px;
+      color: var(--text-dim);
+      letter-spacing: 0.1em;
+      text-align: center;
+    }
 
-        .store-selector:focus {
-            border-color: var(--primary);
-            box-shadow: 0 0 10px rgba(99, 102, 241, 0.2);
-        }
+    .header-right {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 20px;
+    }
 
-        /* Glassmorphic Cards */
-        .card {
-            background: var(--panel-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 1.25rem;
-            padding: 1.5rem;
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
-            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-            transition: transform 0.3s ease, border-color 0.3s ease;
-        }
+    .status-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 10px;
+      color: var(--text-dim);
+      letter-spacing: 0.08em;
+    }
 
-        .card:hover {
-            border-color: rgba(255, 255, 255, 0.15);
-        }
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      background: var(--green);
+      animation: blink 2s ease-in-out infinite;
+    }
 
-        /* Stats Grid */
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-            gap: 1.5rem;
-        }
+    .status-dot.stale { background: var(--red); animation: none; }
 
-        .stat-card {
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-            min-height: 120px;
-            position: relative;
-            overflow: hidden;
-        }
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
 
-        .stat-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 4px;
-            height: 100%;
-            border-radius: 4px 0 0 4px;
-        }
+    .store-select {
+      background: var(--bg);
+      border: 1px solid var(--border-hi);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 11px;
+      padding: 5px 10px;
+      cursor: pointer;
+      outline: none;
+      letter-spacing: 0.05em;
+    }
 
-        .stat-card.primary::before { background: var(--primary); }
-        .stat-card.success::before { background: var(--success); }
-        .stat-card.warning::before { background: var(--warning); }
-        .stat-card.danger::before { background: var(--danger); }
+    .store-select:focus { border-color: var(--amber); }
 
-        .stat-label {
-            font-size: 0.85rem;
-            color: var(--text-muted);
-            font-weight: 500;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
+    /* ── Section label ── */
+    .section-label {
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--text-mute);
+      padding: 10px 24px 0;
+      font-weight: 400;
+    }
 
-        .stat-value-container {
-            display: flex;
-            align-items: baseline;
-            gap: 0.5rem;
-            margin-top: 0.5rem;
-        }
+    /* ── KPI row ── */
+    .kpi-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      border-bottom: 1px solid var(--border);
+    }
 
-        .stat-value {
-            font-size: 2.25rem;
-            font-weight: 800;
-            letter-spacing: -0.03em;
-        }
+    .kpi {
+      padding: 20px 24px;
+      border-right: 1px solid var(--border);
+      position: relative;
+      transition: background 0.15s;
+    }
 
-        .stat-subtext {
-            font-size: 0.8rem;
-            color: var(--text-muted);
-            margin-top: 0.25rem;
-        }
+    .kpi:last-child { border-right: none; }
+    .kpi:hover { background: var(--surface); }
 
-        /* Main Dashboard Grid */
-        .main-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 1.5rem;
-        }
+    .kpi-label {
+      font-size: 9px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--text-mute);
+      margin-bottom: 10px;
+    }
 
-        @media (max-width: 1024px) {
-            .main-grid {
-                grid-template-columns: 1fr;
-            }
-        }
+    .kpi-value {
+      font-size: 36px;
+      font-weight: 600;
+      line-height: 1;
+      color: var(--text);
+      margin-bottom: 8px;
+      font-variant-numeric: tabular-nums;
+      transition: color 0.3s;
+    }
 
-        .chart-card {
-            display: flex;
-            flex-direction: column;
-            gap: 1.25rem;
-            min-height: 350px;
-        }
+    .kpi-value.amber { color: var(--amber); }
+    .kpi-value.green { color: var(--green); }
+    .kpi-value.red   { color: var(--red); }
 
-        .chart-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
+    .kpi-sub {
+      font-size: 10px;
+      color: var(--text-dim);
+      font-weight: 300;
+    }
 
-        .chart-title {
-            font-size: 1.1rem;
-            font-weight: 700;
-            letter-spacing: -0.01em;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
+    /* accent line at top of kpi */
+    .kpi::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: var(--border);
+      transition: background 0.3s;
+    }
 
-        .chart-container {
-            position: relative;
-            flex-grow: 1;
-            width: 100%;
-            height: 100%;
-        }
+    .kpi.visitors::before  { background: var(--amber); }
+    .kpi.conversion::before { background: var(--green); }
+    .kpi.queue::before     { background: var(--blue); }
+    .kpi.abandon::before   { background: var(--red); }
 
-        /* Heatmap Table & Progress styles */
-        .heatmap-list {
-            display: flex;
-            flex-direction: column;
-            gap: 1rem;
-        }
+    /* ── Main grid ── */
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      border-bottom: 1px solid var(--border);
+    }
 
-        .heatmap-item {
-            display: flex;
-            flex-direction: column;
-            gap: 0.35rem;
-        }
+    .panel {
+      padding: 0;
+      border-right: 1px solid var(--border);
+    }
 
-        .heatmap-meta {
-            display: flex;
-            justify-content: space-between;
-            font-size: 0.85rem;
-            font-weight: 600;
-        }
+    .panel:last-child { border-right: none; }
 
-        .heatmap-bar-bg {
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 9999px;
-            height: 8px;
-            overflow: hidden;
-            width: 100%;
-        }
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
 
-        .heatmap-bar-fill {
-            height: 100%;
-            border-radius: 9999px;
-            background: linear-gradient(90deg, var(--primary), var(--accent-pink));
-            transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
-        }
+    .panel-title {
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+    }
 
-        /* Bottom Grid: Anomalies & Health */
-        .bottom-grid {
-            display: grid;
-            grid-template-columns: 2fr 1fr;
-            gap: 1.5rem;
-        }
+    .panel-meta {
+      font-size: 10px;
+      color: var(--text-mute);
+    }
 
-        @media (max-width: 768px) {
-            .bottom-grid {
-                grid-template-columns: 1fr;
-            }
-        }
+    .panel-body {
+      padding: 20px;
+    }
 
-        /* Anomalies List */
-        .anomalies-list {
-            display: flex;
-            flex-direction: column;
-            gap: 1rem;
-            max-height: 320px;
-            overflow-y: auto;
-            padding-right: 0.5rem;
-        }
+    /* ── Funnel chart ── */
+    .funnel-chart-wrap {
+      position: relative;
+      height: 220px;
+    }
 
-        /* Scrollbar Styling */
-        .anomalies-list::-webkit-scrollbar {
-            width: 6px;
-        }
-        .anomalies-list::-webkit-scrollbar-track {
-            background: transparent;
-        }
-        .anomalies-list::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 9999px;
-        }
+    /* ── Heatmap ── */
+    .heatmap-list { display: flex; flex-direction: column; gap: 0; }
 
-        .anomaly-item {
-            background: rgba(255, 255, 255, 0.02);
-            border: 1px solid rgba(255, 255, 255, 0.04);
-            border-radius: 0.85rem;
-            padding: 1rem;
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
-            transition: border-color 0.3s;
-        }
+    .heatmap-row {
+      display: grid;
+      grid-template-columns: 140px 1fr 100px;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+    }
 
-        .anomaly-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
+    .heatmap-row:last-child { border-bottom: none; }
 
-        .anomaly-badge {
-            font-size: 0.75rem;
-            font-weight: 700;
-            padding: 0.2rem 0.6rem;
-            border-radius: 9999px;
-            text-transform: uppercase;
-        }
+    .heatmap-zone {
+      font-size: 11px;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
 
-        .anomaly-badge.critical { background: rgba(239, 68, 68, 0.15); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.3); }
-        .anomaly-badge.warn { background: rgba(245, 158, 11, 0.15); color: var(--warning); border: 1px solid rgba(245, 158, 11, 0.3); }
-        .anomaly-badge.info { background: rgba(99, 102, 241, 0.15); color: var(--primary); border: 1px solid rgba(99, 102, 241, 0.3); }
+    .heatmap-bar-track {
+      height: 4px;
+      background: var(--border);
+      position: relative;
+    }
 
-        .anomaly-type {
-            font-weight: 700;
-            font-size: 0.95rem;
-        }
+    .heatmap-bar-fill {
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      background: var(--amber);
+      transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+    }
 
-        .anomaly-desc {
-            font-size: 0.85rem;
-            color: var(--text-muted);
-        }
+    .heatmap-score {
+      font-size: 10px;
+      color: var(--text-dim);
+      text-align: right;
+      white-space: nowrap;
+    }
 
-        .anomaly-action {
-            font-size: 0.85rem;
-            background: rgba(255, 255, 255, 0.03);
-            border-left: 2px solid var(--accent-teal);
-            padding: 0.5rem;
-            color: #d1d5db;
-            border-radius: 0 0.35rem 0.35rem 0;
-        }
+    /* ── Bottom grid ── */
+    .bottom-grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      border-bottom: 1px solid var(--border);
+    }
 
-        .anomaly-time {
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            align-self: flex-end;
-        }
+    /* ── Anomalies ── */
+    .anomaly-list { display: flex; flex-direction: column; gap: 0; }
 
-        .empty-anomalies {
-            text-align: center;
-            color: var(--text-muted);
-            padding: 2rem;
-            font-size: 0.9rem;
-        }
+    .anomaly-item {
+      display: grid;
+      grid-template-columns: 60px 80px 1fr;
+      gap: 12px;
+      align-items: start;
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--border);
+    }
 
-        /* Health Panel */
-        .health-grid {
-            display: flex;
-            flex-direction: column;
-            gap: 1rem;
-        }
+    .anomaly-item:last-child { border-bottom: none; }
 
-        .health-status-bar {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0.75rem 1rem;
-            border-radius: 0.75rem;
-            font-weight: 600;
-        }
+    .anomaly-sev {
+      font-size: 9px;
+      letter-spacing: 0.1em;
+      font-weight: 500;
+      padding: 2px 0;
+    }
 
-        .health-status-bar.ok {
-            background: rgba(16, 185, 129, 0.1);
-            border: 1px solid rgba(16, 185, 129, 0.2);
-            color: var(--success);
-        }
+    .anomaly-sev.CRITICAL { color: var(--red); }
+    .anomaly-sev.WARN     { color: var(--amber); }
+    .anomaly-sev.INFO     { color: var(--blue); }
 
-        .health-status-bar.degraded {
-            background: rgba(239, 68, 68, 0.1);
-            border: 1px solid rgba(239, 68, 68, 0.2);
-            color: var(--danger);
-        }
+    .anomaly-type {
+      font-size: 9px;
+      color: var(--text-mute);
+      letter-spacing: 0.06em;
+    }
 
-        .health-info-row {
-            display: flex;
-            justify-content: space-between;
-            font-size: 0.85rem;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-            padding-bottom: 0.5rem;
-        }
+    .anomaly-desc {
+      font-size: 11px;
+      color: var(--text);
+      line-height: 1.5;
+    }
 
-        .health-info-row:last-child {
-            border-bottom: none;
-        }
+    .anomaly-action {
+      font-size: 10px;
+      color: var(--text-dim);
+      margin-top: 2px;
+    }
 
-        .health-info-label {
-            color: var(--text-muted);
-        }
+    .no-anomaly {
+      padding: 24px 20px;
+      font-size: 11px;
+      color: var(--text-mute);
+    }
 
-        /* Pulsing indicator */
-        .pulse-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background-color: var(--success);
-            box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
-            animation: pulse 1.5s infinite;
-        }
+    .no-anomaly span {
+      color: var(--green);
+      margin-right: 8px;
+    }
 
-        .pulse-dot.degraded {
-            background-color: var(--danger);
-            box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
-        }
+    /* ── Health panel ── */
+    .health-table { width: 100%; border-collapse: collapse; }
 
-        @keyframes pulse {
-            0% {
-                transform: scale(0.95);
-                box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
-            }
-            70% {
-                transform: scale(1);
-                box-shadow: 0 0 0 6px rgba(16, 185, 129, 0);
-            }
-            100% {
-                transform: scale(0.95);
-                box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
-            }
-        }
-    </style>
+    .health-table td {
+      padding: 10px 20px;
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+      vertical-align: top;
+    }
+
+    .health-table tr:last-child td { border-bottom: none; }
+
+    .health-table td:first-child {
+      color: var(--text-mute);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      white-space: nowrap;
+      width: 1%;
+    }
+
+    .health-table td:last-child {
+      color: var(--text);
+    }
+
+    .health-ok   { color: var(--green) !important; }
+    .health-bad  { color: var(--red) !important; }
+
+    /* ── Footer ── */
+    .footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 24px;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .footer-left {
+      font-size: 10px;
+      color: var(--text-mute);
+    }
+
+    .footer-right {
+      display: flex;
+      gap: 24px;
+    }
+
+    .footer-item {
+      font-size: 10px;
+      color: var(--text-mute);
+    }
+
+    .footer-item span { color: var(--text-dim); }
+
+    /* ── Tick animation on value update ── */
+    @keyframes tick {
+      0%   { opacity: 0.4; }
+      100% { opacity: 1; }
+    }
+
+    .updated { animation: tick 0.3s ease-out; }
+
+    /* ── Responsive ── */
+    @media (max-width: 900px) {
+      .kpi-row      { grid-template-columns: repeat(2, 1fr); }
+      .main-grid    { grid-template-columns: 1fr; }
+      .bottom-grid  { grid-template-columns: 1fr; }
+      .kpi:nth-child(2) { border-right: none; }
+    }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <!-- Header -->
-        <header>
-            <div class="brand">
-                <div class="brand-logo">S</div>
-                <div class="brand-text">
-                    <h1>Store Intelligence Portal</h1>
-                    <p>Real-Time Store Operations & Insights Platform</p>
-                </div>
-            </div>
-            <div class="controls">
-                <div style="display: flex; align-items: center; gap: 0.5rem;">
-                    <div id="health-pulse" class="pulse-dot"></div>
-                    <span id="uptime-label" style="font-size: 0.8rem; color: var(--text-muted);">Uptime: --</span>
-                </div>
-                <select id="store-select" class="store-selector" onchange="changeStore()">
-                    <option value="ST1008" selected>ST1008 (Brigade BLR)</option>
-                    <option value="STORE_BLR_002">STORE_BLR_002</option>
-                </select>
-            </div>
-        </header>
+<div class="shell">
 
-        <!-- Stats row -->
-        <section class="stats-grid">
-            <div class="card stat-card primary">
-                <span class="stat-label">Unique Visitors</span>
-                <div class="stat-value-container">
-                    <span class="stat-value" id="stat-visitors">0</span>
-                </div>
-                <span class="stat-subtext">Excluding active staff members</span>
-            </div>
-            <div class="card stat-card success">
-                <span class="stat-label">Conversion Rate</span>
-                <div class="stat-value-container">
-                    <span class="stat-value" id="stat-conversion">0.0%</span>
-                </div>
-                <span class="stat-subtext">Checkout vs. store entries</span>
-            </div>
-            <div class="card stat-card warning">
-                <span class="stat-label">Billing Queue Depth</span>
-                <div class="stat-value-container">
-                    <span class="stat-value" id="stat-queue">0</span>
-                </div>
-                <span class="stat-subtext">Active customers waiting at POS</span>
-            </div>
-            <div class="card stat-card danger">
-                <span class="stat-label">Queue Abandonment</span>
-                <div class="stat-value-container">
-                    <span class="stat-value" id="stat-abandonment">0.0%</span>
-                </div>
-                <span class="stat-subtext">Left billing area before transaction</span>
-            </div>
-        </section>
+  <!-- Header -->
+  <header class="header">
+    <div class="header-left">
+      <div class="logo-mark">SI</div>
+      <div>
+        <div class="header-title">Store Intelligence <span>/ Ops Console</span></div>
+      </div>
+    </div>
+    <div class="header-center" id="clock-display">––:––:––  UTC</div>
+    <div class="header-right">
+      <div class="status-pill">
+        <div class="status-dot" id="status-dot"></div>
+        <span id="uptime-label">connecting…</span>
+      </div>
+      <select class="store-select" id="store-select" onchange="changeStore()">
+        <option value="ST1008">ST1008 · Brigade BLR</option>
+        <option value="STORE_BLR_002">STORE_BLR_002</option>
+      </select>
+    </div>
+  </header>
 
-        <!-- Charts row -->
-        <section class="main-grid">
-            <!-- Funnel -->
-            <div class="card chart-card">
-                <div class="chart-header">
-                    <h2 class="chart-title">🔽 Customer Conversion Funnel</h2>
-                </div>
-                <div class="chart-container">
-                    <canvas id="funnelChart"></canvas>
-                </div>
-            </div>
+  <!-- KPI row -->
+  <div class="kpi-row">
+    <div class="kpi visitors">
+      <div class="kpi-label">Unique Visitors</div>
+      <div class="kpi-value amber" id="kpi-visitors">—</div>
+      <div class="kpi-sub">excl. staff</div>
+    </div>
+    <div class="kpi conversion">
+      <div class="kpi-label">Conversion Rate</div>
+      <div class="kpi-value green" id="kpi-conversion">—</div>
+      <div class="kpi-sub">purchase / entry</div>
+    </div>
+    <div class="kpi queue">
+      <div class="kpi-label">Queue Depth</div>
+      <div class="kpi-value" id="kpi-queue">—</div>
+      <div class="kpi-sub">at POS now</div>
+    </div>
+    <div class="kpi abandon">
+      <div class="kpi-label">Queue Abandon</div>
+      <div class="kpi-value red" id="kpi-abandon">—</div>
+      <div class="kpi-sub">left before txn</div>
+    </div>
+  </div>
 
-            <!-- Heatmap -->
-            <div class="card chart-card">
-                <div class="chart-header">
-                    <h2 class="chart-title">🔥 Zone Traffic Heatmap</h2>
-                    <span id="heatmap-confidence" class="anomaly-badge info" style="display:none;">High Confidence</span>
-                </div>
-                <div class="heatmap-list" id="heatmap-list">
-                    <div style="text-align: center; color: var(--text-muted); padding: 3rem;">Loading heatmap data...</div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Anomalies & Health row -->
-        <section class="bottom-grid">
-            <!-- Anomalies -->
-            <div class="card">
-                <h2 class="chart-title" style="margin-bottom: 1.25rem;">🚨 Active Operational Anomalies</h2>
-                <div class="anomalies-list" id="anomalies-list">
-                    <div class="empty-anomalies">All systems normal. No active anomalies.</div>
-                </div>
-            </div>
-
-            <!-- Health Status -->
-            <div class="card">
-                <h2 class="chart-title" style="margin-bottom: 1.25rem;">⚙️ API Service Status</h2>
-                <div class="health-grid">
-                    <div id="health-status-box" class="health-status-bar ok">
-                        <span>SYSTEM STATUS: OK</span>
-                    </div>
-                    <div style="display: flex; flex-direction: column; gap: 0.75rem;">
-                        <div class="health-info-row">
-                            <span class="health-info-label">Active Monitored Stores</span>
-                            <span id="health-active-stores" style="font-weight: 600;">0</span>
-                        </div>
-                        <div class="health-info-row">
-                            <span class="health-info-label">Event Stream Lag</span>
-                            <span id="health-event-lag" style="font-weight: 600;">Normal</span>
-                        </div>
-                        <div class="health-info-row">
-                            <span class="health-info-label">Last API Poll</span>
-                            <span id="health-last-poll" style="font-weight: 600;">--</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
+  <!-- Main: funnel + heatmap -->
+  <div class="main-grid">
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">Customer Funnel</div>
+        <div class="panel-meta" id="funnel-sessions">— sessions</div>
+      </div>
+      <div class="panel-body">
+        <div class="funnel-chart-wrap">
+          <canvas id="funnel-chart"></canvas>
+        </div>
+      </div>
     </div>
 
-    <script>
-        let funnelChart = null;
-        let activeStore = 'ST1008';
-        const refreshInterval = 3000; // 3 seconds
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">Zone Traffic</div>
+        <div class="panel-meta" id="heatmap-conf">—</div>
+      </div>
+      <div class="panel-body" style="padding:0 20px;">
+        <div class="heatmap-list" id="heatmap-list">
+          <div style="padding:20px 0; color:var(--text-mute); font-size:11px;">loading…</div>
+        </div>
+      </div>
+    </div>
+  </div>
 
-        // Initialize funnel chart
-        function initCharts() {
-            const ctx = document.getElementById('funnelChart').getContext('2d');
-            funnelChart = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: ['Entry', 'Zone Visit', 'Billing Queue', 'Purchase'],
-                    datasets: [{
-                        label: 'Customers',
-                        data: [0, 0, 0, 0],
-                        backgroundColor: [
-                            'rgba(99, 102, 241, 0.7)',  // entry
-                            'rgba(20, 184, 166, 0.7)',  // zone
-                            'rgba(245, 158, 11, 0.7)',  // billing
-                            'rgba(16, 185, 129, 0.7)'   // purchase
-                        ],
-                        borderColor: [
-                            '#6366f1', '#14b8a6', '#f59e0b', '#10b981'
-                        ],
-                        borderWidth: 1,
-                        borderRadius: 6
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    indexAxis: 'y', // horizontal bar chart
-                    plugins: {
-                        legend: { display: false }
-                    },
-                    scales: {
-                        x: {
-                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                            ticks: { color: '#9ca3af' }
-                        },
-                        y: {
-                            grid: { display: false },
-                            ticks: { color: '#f3f4f6', font: { weight: 'bold' } }
-                        }
-                    }
-                }
-            });
+  <!-- Bottom: anomalies + health -->
+  <div class="bottom-grid">
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">Active Anomalies</div>
+        <div class="panel-meta" id="anomaly-count">—</div>
+      </div>
+      <div class="anomaly-list" id="anomaly-list">
+        <div class="no-anomaly">loading…</div>
+      </div>
+    </div>
+
+    <div class="panel" style="border-right:none;">
+      <div class="panel-header">
+        <div class="panel-title">System Status</div>
+        <div class="panel-meta" id="last-poll">—</div>
+      </div>
+      <table class="health-table" id="health-table">
+        <tr><td>api</td><td>—</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-left">store-intelligence v1.0 · brigade road bangalore</div>
+    <div class="footer-right">
+      <div class="footer-item">poll interval <span>3s</span></div>
+      <div class="footer-item">store <span id="footer-store">ST1008</span></div>
+      <div class="footer-item">window <span id="footer-window">—</span></div>
+    </div>
+  </footer>
+
+</div>
+
+<script>
+  // ── State ──
+  let activeStore = 'ST1008';
+  let funnelChart = null;
+
+  // ── Clock ──
+  function updateClock() {
+    const now = new Date();
+    const h = String(now.getUTCHours()).padStart(2,'0');
+    const m = String(now.getUTCMinutes()).padStart(2,'0');
+    const s = String(now.getUTCSeconds()).padStart(2,'0');
+    document.getElementById('clock-display').textContent = `${h}:${m}:${s}  UTC`;
+  }
+  setInterval(updateClock, 1000);
+  updateClock();
+
+  // ── Chart init ──
+  function initChart() {
+    const ctx = document.getElementById('funnel-chart').getContext('2d');
+    funnelChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: ['Entry', 'Zone Visit', 'Billing Queue', 'Purchase'],
+        datasets: [{
+          data: [0,0,0,0],
+          backgroundColor: ['#e8a400', '#3ddc84', '#4d9fff', '#d4d4d4'],
+          borderWidth: 0,
+          borderRadius: 0,
+          barThickness: 22,
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#111',
+            borderColor: '#333',
+            borderWidth: 1,
+            titleColor: '#666',
+            bodyColor: '#d4d4d4',
+            titleFont: { family: 'IBM Plex Mono', size: 10 },
+            bodyFont: { family: 'IBM Plex Mono', size: 12 },
+            callbacks: {
+              afterBody: (items) => {
+                const idx = items[0].dataIndex;
+                const data = funnelChart._dropOffs || [];
+                if (data[idx] > 0) return [`drop-off: ${data[idx].toFixed(1)}%`];
+                return [];
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid: { color: '#1a1a1a', drawBorder: false },
+            ticks: { color: '#444', font: { family: 'IBM Plex Mono', size: 10 }, maxTicksLimit: 6 },
+            border: { color: '#222' }
+          },
+          y: {
+            grid: { display: false },
+            ticks: { color: '#888', font: { family: 'IBM Plex Mono', size: 11 } },
+            border: { color: '#222' }
+          }
         }
+      }
+    });
+  }
 
-        async function apiFetch(endpoint) {
-            try {
-                const response = await fetch(endpoint);
-                if (!response.ok) throw new Error('API down');
-                return await response.json();
-            } catch (err) {
-                console.error('Error fetching: ', endpoint, err);
-                return null;
-            }
-        }
+  // ── Fetch helper ──
+  async function get(url) {
+    try {
+      const r = await fetch(url);
+      if (!r.ok) return null;
+      return await r.json();
+    } catch { return null; }
+  }
 
-        async function updateDashboard() {
-            const apiBase = window.location.origin;
-            const now = new Date().toLocaleTimeString();
+  // ── Tick a value with animation ──
+  function setValue(id, val, cls) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = val;
+    if (cls) el.className = `kpi-value ${cls}`;
+    el.classList.add('updated');
+    setTimeout(() => el.classList.remove('updated'), 350);
+  }
 
-            // Fetch concurrently
-            const [metrics, funnel, heatmap, anomalies, health] = await Promise.all([
-                apiFetch(`${apiBase}/stores/${activeStore}/metrics`),
-                apiFetch(`${apiBase}/stores/${activeStore}/funnel`),
-                apiFetch(`${apiBase}/stores/${activeStore}/heatmap`),
-                apiFetch(`${apiBase}/stores/${activeStore}/anomalies`),
-                apiFetch(`${apiBase}/health`)
-            ]);
+  // ── Main update ──
+  async function update() {
+    const base = window.location.origin;
+    const [metrics, funnel, heatmap, anomalies, health] = await Promise.all([
+      get(`${base}/stores/${activeStore}/metrics`),
+      get(`${base}/stores/${activeStore}/funnel`),
+      get(`${base}/stores/${activeStore}/heatmap`),
+      get(`${base}/stores/${activeStore}/anomalies`),
+      get(`${base}/health`),
+    ]);
 
-            // Update stats
-            if (metrics) {
-                document.getElementById('stat-visitors').textContent = metrics.unique_visitors;
-                document.getElementById('stat-conversion').textContent = (metrics.conversion_rate * 100).toFixed(1) + '%';
-                document.getElementById('stat-queue').textContent = metrics.current_queue_depth;
-                document.getElementById('stat-abandonment').textContent = (metrics.abandonment_rate * 100).toFixed(1) + '%';
-            }
+    const now = new Date().toLocaleTimeString('en-GB', { hour12: false });
 
-            // Update funnel chart
-            if (funnel && funnel.stages) {
-                const counts = funnel.stages.map(s => s.count);
-                funnelChart.data.datasets[0].data = counts;
-                funnelChart.update();
-            }
+    // KPIs
+    if (metrics) {
+      const conv = (metrics.conversion_rate * 100).toFixed(1) + '%';
+      const aband = (metrics.abandonment_rate * 100).toFixed(1) + '%';
+      const q = metrics.current_queue_depth;
 
-            // Update heatmap list
-            if (heatmap && heatmap.zones) {
-                const listEl = document.getElementById('heatmap-list');
-                listEl.innerHTML = '';
-                
-                // Show data confidence flag if present
-                const confidenceEl = document.getElementById('heatmap-confidence');
-                if (heatmap.zones.length > 0) {
-                    const sampleZone = heatmap.zones[0];
-                    confidenceEl.style.display = 'inline-block';
-                    if (sampleZone.data_confidence) {
-                        confidenceEl.textContent = 'High Confidence';
-                        confidenceEl.className = 'anomaly-badge info';
-                    } else {
-                        confidenceEl.textContent = 'Low Confidence (<20 sessions)';
-                        confidenceEl.className = 'anomaly-badge warn';
-                    }
-                } else {
-                    confidenceEl.style.display = 'none';
-                }
+      setValue('kpi-visitors', metrics.unique_visitors, 'amber');
+      setValue('kpi-conversion', conv, conv === '0.0%' ? '' : 'green');
+      setValue('kpi-queue', q, q > 10 ? 'red' : q > 5 ? 'amber' : '');
+      setValue('kpi-abandon', aband, 'red');
 
-                if (heatmap.zones.length === 0) {
-                    listEl.innerHTML = '<div class="empty-anomalies">No zone traffic recorded.</div>';
-                } else {
-                    heatmap.zones.slice(0, 5).forEach(z => {
-                        const score = z.normalised_score;
-                        const dwellS = (z.avg_dwell_ms / 1000).toFixed(0);
-                        const item = document.createElement('div');
-                        item.className = 'heatmap-item';
-                        item.innerHTML = `
-                            <div class="heatmap-meta">
-                                <span>🏷️ ${z.zone_id}</span>
-                                <span>${score.toFixed(0)}% score · Avg ${dwellS}s dwell (${z.visit_frequency} visits)</span>
-                            </div>
-                            <div class="heatmap-bar-bg">
-                                <div class="heatmap-bar-fill" style="width: ${score}%"></div>
-                            </div>
-                        `;
-                        listEl.appendChild(item);
-                    });
-                }
-            }
+      // footer window
+      if (metrics.window_start) {
+        const d = new Date(metrics.window_start);
+        document.getElementById('footer-window').textContent =
+          d.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false,
+            month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }) + ' IST';
+      }
+    }
 
-            // Update Anomalies list
-            if (anomalies && anomalies.anomalies) {
-                const listEl = document.getElementById('anomalies-list');
-                listEl.innerHTML = '';
-                
-                if (anomalies.anomalies.length === 0) {
-                    listEl.innerHTML = '<div class="empty-anomalies">✅ All systems normal. No active anomalies.</div>';
-                } else {
-                    anomalies.anomalies.forEach(a => {
-                        const item = document.createElement('div');
-                        item.className = 'anomaly-item';
-                        const timeStr = new Date(a.detected_at).toLocaleTimeString();
-                        item.innerHTML = `
-                            <div class="anomaly-header">
-                                <span class="anomaly-type">${a.anomaly_type.replace(/_/g, ' ')}</span>
-                                <span class="anomaly-badge ${a.severity.toLowerCase()}">${a.severity}</span>
-                            </div>
-                            <div class="anomaly-desc">${a.description}</div>
-                            <div class="anomaly-action">💡 Recommended: ${a.suggested_action}</div>
-                            <div class="anomaly-time">Detected at ${timeStr}</div>
-                        `;
-                        listEl.appendChild(item);
-                    });
-                }
-            }
+    // Funnel
+    if (funnel && funnel.stages) {
+      funnelChart.data.datasets[0].data = funnel.stages.map(s => s.count);
+      funnelChart._dropOffs = funnel.stages.map(s => s.drop_off_pct);
+      funnelChart.update('none');
+      document.getElementById('funnel-sessions').textContent =
+        `${funnel.total_sessions} sessions`;
+    }
 
-            // Update health and uptime
-            if (health) {
-                const uptimeS = health.service_uptime_seconds;
-                const hrs = Math.floor(uptimeS / 3600);
-                const mins = Math.floor((uptimeS % 3600) / 60);
-                const secs = Math.floor(uptimeS % 60);
-                document.getElementById('uptime-label').textContent = `Uptime: ${hrs}h ${mins}m ${secs}s`;
-                
-                const boxEl = document.getElementById('health-status-box');
-                const pulseEl = document.getElementById('health-pulse');
-                
-                if (health.status === 'ok') {
-                    boxEl.className = 'health-status-bar ok';
-                    boxEl.innerHTML = '<span>SYSTEM STATUS: OPERATIONAL</span>';
-                    pulseEl.className = 'pulse-dot';
-                    document.getElementById('health-event-lag').textContent = 'Normal';
-                    document.getElementById('health-event-lag').style.color = 'var(--success)';
-                } else {
-                    boxEl.className = 'health-status-bar degraded';
-                    boxEl.innerHTML = '<span>SYSTEM STATUS: DEGRADED (STALE FEED)</span>';
-                    pulseEl.className = 'pulse-dot degraded';
-                    document.getElementById('health-event-lag').textContent = 'Stale Stream Detected';
-                    document.getElementById('health-event-lag').style.color = 'var(--danger)';
-                }
+    // Heatmap
+    if (heatmap && heatmap.zones) {
+      const list = document.getElementById('heatmap-list');
+      if (heatmap.zones.length === 0) {
+        list.innerHTML = '<div style="padding:20px 0;color:var(--text-mute);font-size:11px;">no zone data</div>';
+      } else {
+        const conf = heatmap.zones[0]?.data_confidence;
+        document.getElementById('heatmap-conf').textContent =
+          conf ? 'high confidence' : 'low confidence (<20 sessions)';
 
-                document.getElementById('health-active-stores').textContent = health.stores ? health.stores.length : 0;
-            }
+        list.innerHTML = heatmap.zones.slice(0,7).map(z => {
+          const dwell = z.avg_dwell_ms > 0
+            ? `${(z.avg_dwell_ms/1000).toFixed(0)}s dwell`
+            : 'no dwell data';
+          return `
+            <div class="heatmap-row">
+              <div class="heatmap-zone">${z.zone_id.replace(/_/g,' ')}</div>
+              <div class="heatmap-bar-track">
+                <div class="heatmap-bar-fill" style="width:${z.normalised_score}%"></div>
+              </div>
+              <div class="heatmap-score">${z.visit_frequency} visits · ${dwell}</div>
+            </div>`;
+        }).join('');
+      }
+    }
 
-            document.getElementById('health-last-poll').textContent = now;
-        }
+    // Anomalies
+    if (anomalies) {
+      const list = document.getElementById('anomaly-list');
+      const count = document.getElementById('anomaly-count');
+      count.textContent = anomalies.anomalies.length
+        ? `${anomalies.anomalies.length} active`
+        : 'none active';
 
-        function changeStore() {
-            activeStore = document.getElementById('store-select').value;
-            updateDashboard();
-        }
+      if (anomalies.anomalies.length === 0) {
+        list.innerHTML = `<div class="no-anomaly"><span>✓</span>all clear</div>`;
+      } else {
+        list.innerHTML = anomalies.anomalies.map(a => `
+          <div class="anomaly-item">
+            <div class="anomaly-sev ${a.severity}">${a.severity}</div>
+            <div class="anomaly-type">${a.anomaly_type.replace(/_/g,'\n')}</div>
+            <div>
+              <div class="anomaly-desc">${a.description}</div>
+              <div class="anomaly-action">→ ${a.suggested_action}</div>
+            </div>
+          </div>`).join('');
+      }
+    }
 
-        // Init page
-        window.addEventListener('DOMContentLoaded', () => {
-            initCharts();
-            updateDashboard();
-            setInterval(updateDashboard, refreshInterval);
-        });
-    </script>
+    // Health
+    if (health) {
+      const uptime = health.service_uptime_seconds;
+      const h = Math.floor(uptime/3600);
+      const m = Math.floor((uptime%3600)/60);
+      const s = Math.floor(uptime%60);
+      document.getElementById('uptime-label').textContent =
+        `uptime ${h}h ${m}m ${s}s`;
+
+      const dot = document.getElementById('status-dot');
+      const isOk = health.status === 'ok';
+      dot.className = 'status-dot' + (isOk ? '' : ' stale');
+
+      const store = health.stores?.find(s => s.store_id === activeStore);
+      const table = document.getElementById('health-table');
+      table.innerHTML = `
+        <tr><td>api status</td><td class="${isOk ? 'health-ok' : 'health-bad'}">${health.status.toUpperCase()}</td></tr>
+        <tr><td>uptime</td><td>${h}h ${m}m ${s}s</td></tr>
+        <tr><td>feed status</td><td class="${store?.stale_feed ? 'health-bad' : 'health-ok'}">${store?.stale_feed ? 'STALE' : 'LIVE'}</td></tr>
+        <tr><td>events / hr</td><td>${store?.event_count_last_hour ?? '—'}</td></tr>
+        <tr><td>last event</td><td>${store?.last_event_timestamp
+          ? new Date(store.last_event_timestamp).toLocaleTimeString('en-GB',{hour12:false})
+          : '—'}</td></tr>
+      `;
+    }
+
+    document.getElementById('last-poll').textContent = `polled ${now}`;
+  }
+
+  // ── Store change ──
+  function changeStore() {
+    activeStore = document.getElementById('store-select').value;
+    document.getElementById('footer-store').textContent = activeStore;
+    update();
+  }
+
+  // ── Boot ──
+  window.addEventListener('DOMContentLoaded', () => {
+    initChart();
+    update();
+    setInterval(update, 3000);
+  });
+</script>
 </body>
 </html>
