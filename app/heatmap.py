@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
-from sqlalchemy import select, func, and_, distinct
+from sqlalchemy import select, func, and_, distinct, case
 
 from app.database import EventRecord, SessionRecord
 from app.models import HeatmapResponse, HeatmapZone
@@ -24,24 +24,39 @@ def _day_window(db, store_id):
 def get_store_heatmap(store_id: str, db: Session) -> HeatmapResponse:
     day_start, day_end = _day_window(db, store_id)
 
+    # FIX (Issue N8): Previously counted distinct sessions via SessionRecord.entry_time,
+    # but floor/billing cameras never emit ENTRY events, so entry_time is NULL for most
+    # sessions. NULL >= day_start evaluates False in SQL, causing total_sessions to be
+    # far below the true visitor count, making data_confidence always False.
+    # Fix: count distinct visitor_ids from the events table (same approach as metrics.py).
     total_sessions = db.execute(
-        select(func.count(distinct(SessionRecord.visitor_id))).where(
+        select(func.count(distinct(EventRecord.visitor_id))).where(
             and_(
-                SessionRecord.store_id == store_id,
-                SessionRecord.is_staff == False,
-                SessionRecord.entry_time >= day_start,
-                SessionRecord.entry_time < day_end,
+                EventRecord.store_id == store_id,
+                EventRecord.is_staff == False,
+                EventRecord.timestamp >= day_start,
+                EventRecord.timestamp < day_end,
             )
         )
     ).scalar() or 0
 
     has_confidence = total_sessions >= MIN_SESSIONS_FOR_CONFIDENCE
 
+    # FIX (Issue N6): avg_dwell was diluted by ZONE_ENTER events (which always have
+    # dwell_ms=0). Including them pulled averages toward 0 — a zone with 10 ZONE_ENTER
+    # and 1 ZONE_DWELL (30s) showed avg ≈ 2.7s instead of 30s.
+    # Fix: use conditional aggregation — avg_dwell only averages ZONE_DWELL rows,
+    # while visit_count still counts both ZONE_ENTER and ZONE_DWELL (correct for frequency).
     rows = db.execute(
         select(
             EventRecord.zone_id,
             func.count(EventRecord.event_id).label("visit_count"),
-            func.avg(EventRecord.dwell_ms).label("avg_dwell"),
+            func.avg(
+                case(
+                    (EventRecord.event_type == "ZONE_DWELL", EventRecord.dwell_ms),
+                    else_=None,
+                )
+            ).label("avg_dwell"),
         ).where(
             and_(
                 EventRecord.store_id == store_id,

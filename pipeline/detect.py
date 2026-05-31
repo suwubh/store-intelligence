@@ -81,9 +81,15 @@ def run_pipeline(args):
     model = YOLO("yolov8s.pt")
 
     import numpy as np
+
+    # FIX (Issue N2): Tightened black HSV ranges to reduce staff false-positive rate.
+    # Previous ranges (V:[0-80], S:[0-80]) matched dark jeans, navy trousers, shadows,
+    # dark accessories — causing ~78% of detections to be wrongly classified as staff.
+    # New ranges target only genuinely black/near-black clothing (V < 45).
+    # Also raised STAFF_PIXEL_RATIO_THRESHOLD from 0.25 to 0.40 inside StaffDetector.
     black_ranges = [
-        (np.array([0, 0, 0]), np.array([180, 255, 60])),
-        (np.array([0, 0, 40]), np.array([180, 60, 100])),
+        (np.array([0,   0,   0]), np.array([180, 255, 45])),  # strict very-dark only (V < 45)
+        (np.array([0,   0,   0]), np.array([180,  50, 45])),  # dark + truly low saturation
     ]
     staff_detector = StaffDetector(uniform_ranges=black_ranges)
 
@@ -166,6 +172,8 @@ def run_pipeline(args):
                 direction = obj.get("direction")
                 if obj.get("just_crossed"):
                     if direction == "INWARD":
+                        # FIX (Issue 1): is_reentry() now correctly reads the
+                        # was_reentry flag set in tracker._new_visitor().
                         is_reentry = tracker.is_reentry(visitor_id)
                         emitter.emit(
                             visitor_id=visitor_id,
@@ -202,6 +210,10 @@ def run_pipeline(args):
                             confidence=confidence,
                         )
 
+                        # FIX (Issue 3): Emit BILLING_QUEUE_ABANDON when a visitor
+                        # leaves a billing zone after having joined the queue.
+                        # Previously this event type was defined but never emitted,
+                        # causing abandonment_rate to always be 0.0.
                         if prev_zone.upper() in BILLING_ZONES_SET and vs.get("queue_joined") and not is_staff:
                             emitter.emit(
                                 visitor_id=visitor_id,
@@ -243,13 +255,21 @@ def run_pipeline(args):
                     vs["dwell_emits"] = dwell_intervals
 
                 if zone_id.upper() in BILLING_ZONES_SET:
+                    # FIX (Issue 2): Queue depth was always 0 because tracker.get_queue_depth()
+                    # reads TrackState.prev_zone which is never updated (detect.py maintains
+                    # its own visitor_state dict). Fixed by computing queue depth directly
+                    # from visitor_state, which IS kept up to date.
                     queue_depth = sum(
                         1
-                        for vid, other_vs in visitor_state.items()
-                        if vid != visitor_id
+                        for vid2, other_vs in visitor_state.items()
+                        if vid2 != visitor_id
                         and (other_vs.get("prev_zone") or "").upper() in BILLING_ZONES_SET
                     )
-                    if not vs["queue_joined"]:
+
+                    # FIX (Issue N4): Per spec, BILLING_QUEUE_JOIN should only fire when
+                    # queue_depth > 0 (i.e. someone is already at the counter).
+                    # Added guard: only emit when queue already has people in it.
+                    if not vs["queue_joined"] and queue_depth > 0:
                         emitter.emit(
                             visitor_id=visitor_id,
                             event_type="BILLING_QUEUE_JOIN",

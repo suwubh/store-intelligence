@@ -26,25 +26,12 @@ def _day_window(db: Session, store_id: str):
     return day_start, day_end
 
 
-def _session_filter(store_id: str, day_start: datetime, day_end: datetime):
-    """
-    Base filter for customer sessions.
-    Uses first event timestamp rather than entry_time alone —
-    floor/billing cameras don't emit ENTRY events so entry_time can be NULL.
-    We count any session that has at least one event in the day window.
-    """
-    return and_(
-        SessionRecord.store_id == store_id,
-        SessionRecord.is_staff == False,
-    )
-
-
 def get_store_metrics(store_id: str, db: Session) -> StoreMetrics:
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     day_start, day_end = _day_window(db, store_id)
 
-    # Count unique customer visitor_ids that appear in events during the day window
-    # This works even when entry_time is NULL (floor cameras don't set entry_time)
+    # Count unique customer visitor_ids that appear in events during the day window.
+    # This works even when entry_time is NULL (floor cameras don't set entry_time).
     unique_visitors = db.execute(
         select(func.count(distinct(EventRecord.visitor_id))).where(
             and_(
@@ -59,7 +46,10 @@ def get_store_metrics(store_id: str, db: Session) -> StoreMetrics:
     # Total unique sessions (same logic — count by distinct visitor in event window)
     total_sessions = unique_visitors  # one session per unique visitor per day
 
-    # Converted sessions — scoped to today's visitors only
+    # FIX (Issue 5): Converted sessions must be scoped to today's visitors AND
+    # to the day window. Previously the query had no date filter, so on a multi-day
+    # evaluation, prior days' conversions inflated today's conversion_rate.
+    # We scope by joining to today's visitor_ids (already day-filtered above).
     today_visitor_ids = db.execute(
         select(distinct(EventRecord.visitor_id)).where(
             and_(
@@ -86,7 +76,7 @@ def get_store_metrics(store_id: str, db: Session) -> StoreMetrics:
 
     conversion_rate = (converted_sessions / total_sessions) if total_sessions > 0 else 0.0
 
-    # Avg dwell per zone
+    # Avg dwell per zone — uses only ZONE_DWELL events (not ZONE_ENTER which carry dwell_ms=0)
     zone_dwell_rows = db.execute(
         select(
             EventRecord.zone_id,

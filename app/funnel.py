@@ -62,7 +62,9 @@ def get_store_funnel(store_id: str, db: Session) -> FunnelResponse:
         )
     ).scalar() or 0
 
-    # Purchasers (converted sessions) — scoped to day window via event timestamps
+    # FIX (Issue 5): Purchasers query now scoped to today's visitors via the
+    # day-filtered visitor_id subquery, preventing prior-day conversions from
+    # inflating today's Purchase stage count in a multi-day evaluation.
     converted_visitors = db.execute(
         select(distinct(EventRecord.visitor_id)).where(
             and_(

@@ -13,6 +13,13 @@ BILLING_ZONES = {"BILLING", "BILLING_COUNTER", "BILLING_QUEUE", "CHECKOUT", "CAS
 # A visitor at billing UP TO 5 min BEFORE a transaction = converted
 CONVERSION_WINDOW_SECONDS = 300
 
+# FIX (Issue N1): POS timestamps in the CSV are IST (Indian Standard Time, UTC+5:30).
+# Event timestamps from the pipeline are stored as UTC-naive datetimes.
+# Without this offset, POS transactions at e.g. 15:46 IST would be stored as naive
+# 15:46 and never match event windows around 10:16 UTC — guaranteeing conversion_rate=0.
+# Subtracting 5h30m converts IST wall-clock → UTC so both timestamp columns align.
+IST_TO_UTC_OFFSET = timedelta(hours=5, minutes=30)
+
 
 def ingest_events(request: IngestRequest, db: Session) -> IngestResponse:
     accepted = 0
@@ -151,6 +158,14 @@ def load_pos_transactions(csv_path: str, db: Session):
     Load POS CSV into DB.
     Handles the real Purplle 39-col format:
       order_date (DD-MM-YYYY), order_time (HH:MM:SS), invoice_number, store_id, total_amount
+
+    FIX (Issue N1): POS timestamps are in IST (Indian Standard Time, UTC+5:30).
+    Pipeline event timestamps are stored as UTC-naive datetimes (clip_start is UTC).
+    Without correction, a POS transaction at 15:46 IST would be stored as naive 15:46,
+    but the corresponding billing event window is around 10:16 UTC — a 5h30m gap that
+    guarantees zero conversion matches for this entire dataset.
+    Fix: subtract IST_TO_UTC_OFFSET (5h30m) from every parsed POS timestamp so that
+    both columns use the same UTC-naive reference frame for window comparisons.
     """
     import csv
 
@@ -168,14 +183,16 @@ def load_pos_transactions(csv_path: str, db: Session):
                     if not inv_id or inv_id == "nan":
                         continue
                     if inv_id not in invoices:
-                        # DD-MM-YYYY HH:MM:SS  (local IST, treat as naive for matching)
-                        dt = datetime.strptime(
+                        # Parse DD-MM-YYYY HH:MM:SS as IST wall clock, then convert to UTC-naive
+                        dt_ist = datetime.strptime(
                             f"{row['order_date'].strip()} {row['order_time'].strip()}",
                             "%d-%m-%Y %H:%M:%S",
                         )
+                        # FIX (Issue N1): subtract 5h30m to convert IST → UTC
+                        dt_utc = dt_ist - IST_TO_UTC_OFFSET
                         invoices[inv_id] = {
                             "store_id": row["store_id"].strip(),
-                            "timestamp": dt,
+                            "timestamp": dt_utc,
                             "basket_value": 0.0,
                         }
                     try:

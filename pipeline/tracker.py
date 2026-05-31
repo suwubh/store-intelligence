@@ -15,7 +15,11 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-REENTRY_GRACE_PERIOD_SECONDS = 60
+# FIX (Issue N7): Renamed constant and updated value to match actual usage.
+# Previously named REENTRY_GRACE_PERIOD_SECONDS = 60, but used as * 10 = 600s.
+# DESIGN.md claimed "60-second grace period" — this was wrong.
+# Correct value is 600 seconds (10 minutes). Renamed to avoid confusion.
+REID_MAX_ABSENCE_SECONDS = 600   # 10-minute window for Re-ID matching after exit
 REID_APPEARANCE_THRESHOLD = 0.75
 ENTRY_LINE_RATIO = 0.40
 
@@ -36,6 +40,10 @@ class TrackState:
         self.last_y: float | None = None
         self.is_active: bool = True
         self.confidence: float = 1.0
+        # FIX (Issue 1): was_reentry flag to correctly detect re-entries.
+        # Previously, _new_visitor() removed the track from exited_tracks before
+        # is_reentry() could check it, so is_reentry() always returned False.
+        # Now we set a flag on the new TrackState and read it in is_reentry().
         self.was_reentry: bool = False
 
 
@@ -278,20 +286,24 @@ class MultiObjectTracker:
         return self._new_visitor(bbox, appearance, timestamp, score, preferred_id=track_id)
 
     def _new_visitor(self, bbox, appearance, timestamp, confidence, preferred_id=None) -> str:
+        # FIX (Issue 1): Re-entry detection was permanently broken.
+        # Old code: removed track from exited_tracks, then is_reentry() searched
+        # exited_tracks for it — always found nothing, always returned False.
+        # Fix: set was_reentry=True on the new TrackState. is_reentry() reads
+        # and clears this flag from self.tracks (not exited_tracks).
         if self.reid_enabled and appearance is not None:
             for exited in list(self.exited_tracks):
                 if exited.appearance is None:
                     continue
                 sim = _cosine_similarity(appearance, exited.appearance)
                 time_since_exit = (timestamp - exited.last_seen).total_seconds()
-                if sim > REID_APPEARANCE_THRESHOLD and time_since_exit < REENTRY_GRACE_PERIOD_SECONDS * 10:
+                if sim > REID_APPEARANCE_THRESHOLD and time_since_exit < REID_MAX_ABSENCE_SECONDS:
                     vid = exited.visitor_id
-                    exited.is_active = True
                     self.exited_tracks.remove(exited)
 
                     new_state = TrackState(vid, bbox, timestamp, appearance)
                     new_state.confidence = confidence
-                    new_state.was_reentry = True
+                    new_state.was_reentry = True   # signal for is_reentry() to consume
                     self.tracks[vid] = new_state
                     return vid
 
@@ -302,6 +314,9 @@ class MultiObjectTracker:
         return vid
 
     def is_reentry(self, visitor_id: str) -> bool:
+        # FIX (Issue 1): Check the flag on the active track (self.tracks),
+        # not on exited_tracks. The flag is consumed (reset) after one read
+        # so subsequent calls return False correctly.
         state = self.tracks.get(visitor_id)
         if state and state.was_reentry:
             state.was_reentry = False
