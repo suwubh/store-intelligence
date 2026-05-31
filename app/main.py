@@ -7,7 +7,8 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 from fastapi import FastAPI, Depends, HTTPException, Request, Response
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import OperationalError
 
@@ -65,6 +66,16 @@ app = FastAPI(
     description="Real-time retail store analytics — Apex Retail",
     lifespan=lifespan,
 )
+
+# Enable CORS for frontend integration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 
 # ── Middleware: trace_id + structured request logging ─────────────────────────
@@ -191,3 +202,16 @@ def health(db: Session = Depends(get_db)):
     Service health check. STALE_FEED if any store has >10 min event lag.
     """
     return get_health(db)
+
+
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+def dashboard_ui():
+    """
+    Web Dashboard UI served at root.
+    """
+    template_path = os.path.join(os.path.dirname(__file__), "templates", "dashboard.html")
+    if os.path.exists(template_path):
+        with open(template_path, "r", encoding="utf-8") as f:
+            return f.read()
+    return "<h3>Web Dashboard HTML file not found at app/templates/dashboard.html</h3>"
+

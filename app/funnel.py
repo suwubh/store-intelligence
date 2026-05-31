@@ -2,25 +2,12 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func, and_, distinct
 
-from app.database import EventRecord, SessionRecord
+from app.database import EventRecord, SessionRecord, get_day_window
 from app.models import FunnelResponse, FunnelStage
 
 
-def _day_window(db: Session, store_id: str):
-    from sqlalchemy import func as sqlfunc
-    earliest = db.execute(
-        select(sqlfunc.min(EventRecord.timestamp)).where(EventRecord.store_id == store_id)
-    ).scalar()
-    if earliest:
-        day_start = earliest.replace(hour=0, minute=0, second=0, microsecond=0)
-        return day_start, day_start + timedelta(days=1)
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
-    day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    return day_start, day_start + timedelta(days=1)
-
-
 def get_store_funnel(store_id: str, db: Session) -> FunnelResponse:
-    day_start, day_end = _day_window(db, store_id)
+    day_start, day_end = get_day_window(db, store_id)
 
     # Total unique customer visitors seen in any event during the day
     total_entries = db.execute(
@@ -62,9 +49,7 @@ def get_store_funnel(store_id: str, db: Session) -> FunnelResponse:
         )
     ).scalar() or 0
 
-    # FIX (Issue 5): Purchasers query now scoped to today's visitors via the
-    # day-filtered visitor_id subquery, preventing prior-day conversions from
-    # inflating today's Purchase stage count in a multi-day evaluation.
+    # Purchasers query scoped to today's active visitors
     converted_visitors = db.execute(
         select(distinct(EventRecord.visitor_id)).where(
             and_(

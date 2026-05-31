@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Store Intelligence Dashboard</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --panel-bg: rgba(17, 24, 39, 0.7);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --primary: #6366f1; /* Indigo */
+            --primary-glow: rgba(99, 102, 241, 0.15);
+            --accent-teal: #14b8a6;
+            --accent-pink: #d946ef;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            background-image: 
+                radial-gradient(at 10% 10%, rgba(99, 102, 241, 0.1) 0px, transparent 50%),
+                radial-gradient(at 90% 90%, rgba(217, 70, 239, 0.07) 0px, transparent 50%);
+            color: var(--text-main);
+            font-family: var(--font-family);
+            min-height: 100vh;
+            padding: 2rem;
+            line-height: 1.5;
+            overflow-x: hidden;
+        }
+
+        /* Container & Layout */
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+        }
+
+        /* Header */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .brand-logo {
+            width: 2.5rem;
+            height: 2.5rem;
+            background: linear-gradient(135deg, var(--primary), var(--accent-pink));
+            border-radius: 0.75rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 15px rgba(99, 102, 241, 0.4);
+            font-weight: 800;
+            font-size: 1.25rem;
+            color: #fff;
+        }
+
+        .brand-text h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(to right, #ffffff, #d8b4fe);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.025em;
+        }
+
+        .brand-text p {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        .controls {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .store-selector {
+            background: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 0.6rem 1.2rem;
+            border-radius: 0.75rem;
+            font-family: var(--font-family);
+            font-weight: 600;
+            font-size: 0.9rem;
+            outline: none;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+
+        .store-selector:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 10px rgba(99, 102, 241, 0.2);
+        }
+
+        /* Glassmorphic Cards */
+        .card {
+            background: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 1.25rem;
+            padding: 1.5rem;
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            transition: transform 0.3s ease, border-color 0.3s ease;
+        }
+
+        .card:hover {
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .stat-card {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            min-height: 120px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            border-radius: 4px 0 0 4px;
+        }
+
+        .stat-card.primary::before { background: var(--primary); }
+        .stat-card.success::before { background: var(--success); }
+        .stat-card.warning::before { background: var(--warning); }
+        .stat-card.danger::before { background: var(--danger); }
+
+        .stat-label {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .stat-value-container {
+            display: flex;
+            align-items: baseline;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+        }
+
+        .stat-value {
+            font-size: 2.25rem;
+            font-weight: 800;
+            letter-spacing: -0.03em;
+        }
+
+        .stat-subtext {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-top: 0.25rem;
+        }
+
+        /* Main Dashboard Grid */
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+        }
+
+        @media (max-width: 1024px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .chart-card {
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+            min-height: 350px;
+        }
+
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .chart-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            letter-spacing: -0.01em;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .chart-container {
+            position: relative;
+            flex-grow: 1;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Heatmap Table & Progress styles */
+        .heatmap-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .heatmap-item {
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+        }
+
+        .heatmap-meta {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .heatmap-bar-bg {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 9999px;
+            height: 8px;
+            overflow: hidden;
+            width: 100%;
+        }
+
+        .heatmap-bar-fill {
+            height: 100%;
+            border-radius: 9999px;
+            background: linear-gradient(90deg, var(--primary), var(--accent-pink));
+            transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* Bottom Grid: Anomalies & Health */
+        .bottom-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 1.5rem;
+        }
+
+        @media (max-width: 768px) {
+            .bottom-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Anomalies List */
+        .anomalies-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            max-height: 320px;
+            overflow-y: auto;
+            padding-right: 0.5rem;
+        }
+
+        /* Scrollbar Styling */
+        .anomalies-list::-webkit-scrollbar {
+            width: 6px;
+        }
+        .anomalies-list::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .anomalies-list::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 9999px;
+        }
+
+        .anomaly-item {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.04);
+            border-radius: 0.85rem;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            transition: border-color 0.3s;
+        }
+
+        .anomaly-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .anomaly-badge {
+            font-size: 0.75rem;
+            font-weight: 700;
+            padding: 0.2rem 0.6rem;
+            border-radius: 9999px;
+            text-transform: uppercase;
+        }
+
+        .anomaly-badge.critical { background: rgba(239, 68, 68, 0.15); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.3); }
+        .anomaly-badge.warn { background: rgba(245, 158, 11, 0.15); color: var(--warning); border: 1px solid rgba(245, 158, 11, 0.3); }
+        .anomaly-badge.info { background: rgba(99, 102, 241, 0.15); color: var(--primary); border: 1px solid rgba(99, 102, 241, 0.3); }
+
+        .anomaly-type {
+            font-weight: 700;
+            font-size: 0.95rem;
+        }
+
+        .anomaly-desc {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        .anomaly-action {
+            font-size: 0.85rem;
+            background: rgba(255, 255, 255, 0.03);
+            border-left: 2px solid var(--accent-teal);
+            padding: 0.5rem;
+            color: #d1d5db;
+            border-radius: 0 0.35rem 0.35rem 0;
+        }
+
+        .anomaly-time {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            align-self: flex-end;
+        }
+
+        .empty-anomalies {
+            text-align: center;
+            color: var(--text-muted);
+            padding: 2rem;
+            font-size: 0.9rem;
+        }
+
+        /* Health Panel */
+        .health-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .health-status-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.75rem 1rem;
+            border-radius: 0.75rem;
+            font-weight: 600;
+        }
+
+        .health-status-bar.ok {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            color: var(--success);
+        }
+
+        .health-status-bar.degraded {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            color: var(--danger);
+        }
+
+        .health-info-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            padding-bottom: 0.5rem;
+        }
+
+        .health-info-row:last-child {
+            border-bottom: none;
+        }
+
+        .health-info-label {
+            color: var(--text-muted);
+        }
+
+        /* Pulsing indicator */
+        .pulse-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: var(--success);
+            box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+            animation: pulse 1.5s infinite;
+        }
+
+        .pulse-dot.degraded {
+            background-color: var(--danger);
+            box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+            }
+            70% {
+                transform: scale(1);
+                box-shadow: 0 0 0 6px rgba(16, 185, 129, 0);
+            }
+            100% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header>
+            <div class="brand">
+                <div class="brand-logo">S</div>
+                <div class="brand-text">
+                    <h1>Store Intelligence Portal</h1>
+                    <p>Real-Time Store Operations & Insights Platform</p>
+                </div>
+            </div>
+            <div class="controls">
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <div id="health-pulse" class="pulse-dot"></div>
+                    <span id="uptime-label" style="font-size: 0.8rem; color: var(--text-muted);">Uptime: --</span>
+                </div>
+                <select id="store-select" class="store-selector" onchange="changeStore()">
+                    <option value="ST1008" selected>ST1008 (Brigade BLR)</option>
+                    <option value="STORE_BLR_002">STORE_BLR_002</option>
+                </select>
+            </div>
+        </header>
+
+        <!-- Stats row -->
+        <section class="stats-grid">
+            <div class="card stat-card primary">
+                <span class="stat-label">Unique Visitors</span>
+                <div class="stat-value-container">
+                    <span class="stat-value" id="stat-visitors">0</span>
+                </div>
+                <span class="stat-subtext">Excluding active staff members</span>
+            </div>
+            <div class="card stat-card success">
+                <span class="stat-label">Conversion Rate</span>
+                <div class="stat-value-container">
+                    <span class="stat-value" id="stat-conversion">0.0%</span>
+                </div>
+                <span class="stat-subtext">Checkout vs. store entries</span>
+            </div>
+            <div class="card stat-card warning">
+                <span class="stat-label">Billing Queue Depth</span>
+                <div class="stat-value-container">
+                    <span class="stat-value" id="stat-queue">0</span>
+                </div>
+                <span class="stat-subtext">Active customers waiting at POS</span>
+            </div>
+            <div class="card stat-card danger">
+                <span class="stat-label">Queue Abandonment</span>
+                <div class="stat-value-container">
+                    <span class="stat-value" id="stat-abandonment">0.0%</span>
+                </div>
+                <span class="stat-subtext">Left billing area before transaction</span>
+            </div>
+        </section>
+
+        <!-- Charts row -->
+        <section class="main-grid">
+            <!-- Funnel -->
+            <div class="card chart-card">
+                <div class="chart-header">
+                    <h2 class="chart-title">🔽 Customer Conversion Funnel</h2>
+                </div>
+                <div class="chart-container">
+                    <canvas id="funnelChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Heatmap -->
+            <div class="card chart-card">
+                <div class="chart-header">
+                    <h2 class="chart-title">🔥 Zone Traffic Heatmap</h2>
+                    <span id="heatmap-confidence" class="anomaly-badge info" style="display:none;">High Confidence</span>
+                </div>
+                <div class="heatmap-list" id="heatmap-list">
+                    <div style="text-align: center; color: var(--text-muted); padding: 3rem;">Loading heatmap data...</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Anomalies & Health row -->
+        <section class="bottom-grid">
+            <!-- Anomalies -->
+            <div class="card">
+                <h2 class="chart-title" style="margin-bottom: 1.25rem;">🚨 Active Operational Anomalies</h2>
+                <div class="anomalies-list" id="anomalies-list">
+                    <div class="empty-anomalies">All systems normal. No active anomalies.</div>
+                </div>
+            </div>
+
+            <!-- Health Status -->
+            <div class="card">
+                <h2 class="chart-title" style="margin-bottom: 1.25rem;">⚙️ API Service Status</h2>
+                <div class="health-grid">
+                    <div id="health-status-box" class="health-status-bar ok">
+                        <span>SYSTEM STATUS: OK</span>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                        <div class="health-info-row">
+                            <span class="health-info-label">Active Monitored Stores</span>
+                            <span id="health-active-stores" style="font-weight: 600;">0</span>
+                        </div>
+                        <div class="health-info-row">
+                            <span class="health-info-label">Event Stream Lag</span>
+                            <span id="health-event-lag" style="font-weight: 600;">Normal</span>
+                        </div>
+                        <div class="health-info-row">
+                            <span class="health-info-label">Last API Poll</span>
+                            <span id="health-last-poll" style="font-weight: 600;">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        let funnelChart = null;
+        let activeStore = 'ST1008';
+        const refreshInterval = 3000; // 3 seconds
+
+        // Initialize funnel chart
+        function initCharts() {
+            const ctx = document.getElementById('funnelChart').getContext('2d');
+            funnelChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['Entry', 'Zone Visit', 'Billing Queue', 'Purchase'],
+                    datasets: [{
+                        label: 'Customers',
+                        data: [0, 0, 0, 0],
+                        backgroundColor: [
+                            'rgba(99, 102, 241, 0.7)',  // entry
+                            'rgba(20, 184, 166, 0.7)',  // zone
+                            'rgba(245, 158, 11, 0.7)',  // billing
+                            'rgba(16, 185, 129, 0.7)'   // purchase
+                        ],
+                        borderColor: [
+                            '#6366f1', '#14b8a6', '#f59e0b', '#10b981'
+                        ],
+                        borderWidth: 1,
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y', // horizontal bar chart
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        x: {
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                            ticks: { color: '#9ca3af' }
+                        },
+                        y: {
+                            grid: { display: false },
+                            ticks: { color: '#f3f4f6', font: { weight: 'bold' } }
+                        }
+                    }
+                }
+            });
+        }
+
+        async function apiFetch(endpoint) {
+            try {
+                const response = await fetch(endpoint);
+                if (!response.ok) throw new Error('API down');
+                return await response.json();
+            } catch (err) {
+                console.error('Error fetching: ', endpoint, err);
+                return null;
+            }
+        }
+
+        async function updateDashboard() {
+            const apiBase = window.location.origin;
+            const now = new Date().toLocaleTimeString();
+
+            // Fetch concurrently
+            const [metrics, funnel, heatmap, anomalies, health] = await Promise.all([
+                apiFetch(`${apiBase}/stores/${activeStore}/metrics`),
+                apiFetch(`${apiBase}/stores/${activeStore}/funnel`),
+                apiFetch(`${apiBase}/stores/${activeStore}/heatmap`),
+                apiFetch(`${apiBase}/stores/${activeStore}/anomalies`),
+                apiFetch(`${apiBase}/health`)
+            ]);
+
+            // Update stats
+            if (metrics) {
+                document.getElementById('stat-visitors').textContent = metrics.unique_visitors;
+                document.getElementById('stat-conversion').textContent = (metrics.conversion_rate * 100).toFixed(1) + '%';
+                document.getElementById('stat-queue').textContent = metrics.current_queue_depth;
+                document.getElementById('stat-abandonment').textContent = (metrics.abandonment_rate * 100).toFixed(1) + '%';
+            }
+
+            // Update funnel chart
+            if (funnel && funnel.stages) {
+                const counts = funnel.stages.map(s => s.count);
+                funnelChart.data.datasets[0].data = counts;
+                funnelChart.update();
+            }
+
+            // Update heatmap list
+            if (heatmap && heatmap.zones) {
+                const listEl = document.getElementById('heatmap-list');
+                listEl.innerHTML = '';
+                
+                // Show data confidence flag if present
+                const confidenceEl = document.getElementById('heatmap-confidence');
+                if (heatmap.zones.length > 0) {
+                    const sampleZone = heatmap.zones[0];
+                    confidenceEl.style.display = 'inline-block';
+                    if (sampleZone.data_confidence) {
+                        confidenceEl.textContent = 'High Confidence';
+                        confidenceEl.className = 'anomaly-badge info';
+                    } else {
+                        confidenceEl.textContent = 'Low Confidence (<20 sessions)';
+                        confidenceEl.className = 'anomaly-badge warn';
+                    }
+                } else {
+                    confidenceEl.style.display = 'none';
+                }
+
+                if (heatmap.zones.length === 0) {
+                    listEl.innerHTML = '<div class="empty-anomalies">No zone traffic recorded.</div>';
+                } else {
+                    heatmap.zones.slice(0, 5).forEach(z => {
+                        const score = z.normalised_score;
+                        const dwellS = (z.avg_dwell_ms / 1000).toFixed(0);
+                        const item = document.createElement('div');
+                        item.className = 'heatmap-item';
+                        item.innerHTML = `
+                            <div class="heatmap-meta">
+                                <span>🏷️ ${z.zone_id}</span>
+                                <span>${score.toFixed(0)}% score · Avg ${dwellS}s dwell (${z.visit_frequency} visits)</span>
+                            </div>
+                            <div class="heatmap-bar-bg">
+                                <div class="heatmap-bar-fill" style="width: ${score}%"></div>
+                            </div>
+                        `;
+                        listEl.appendChild(item);
+                    });
+                }
+            }
+
+            // Update Anomalies list
+            if (anomalies && anomalies.anomalies) {
+                const listEl = document.getElementById('anomalies-list');
+                listEl.innerHTML = '';
+                
+                if (anomalies.anomalies.length === 0) {
+                    listEl.innerHTML = '<div class="empty-anomalies">✅ All systems normal. No active anomalies.</div>';
+                } else {
+                    anomalies.anomalies.forEach(a => {
+                        const item = document.createElement('div');
+                        item.className = 'anomaly-item';
+                        const timeStr = new Date(a.detected_at).toLocaleTimeString();
+                        item.innerHTML = `
+                            <div class="anomaly-header">
+                                <span class="anomaly-type">${a.anomaly_type.replace(/_/g, ' ')}</span>
+                                <span class="anomaly-badge ${a.severity.toLowerCase()}">${a.severity}</span>
+                            </div>
+                            <div class="anomaly-desc">${a.description}</div>
+                            <div class="anomaly-action">💡 Recommended: ${a.suggested_action}</div>
+                            <div class="anomaly-time">Detected at ${timeStr}</div>
+                        `;
+                        listEl.appendChild(item);
+                    });
+                }
+            }
+
+            // Update health and uptime
+            if (health) {
+                const uptimeS = health.service_uptime_seconds;
+                const hrs = Math.floor(uptimeS / 3600);
+                const mins = Math.floor((uptimeS % 3600) / 60);
+                const secs = Math.floor(uptimeS % 60);
+                document.getElementById('uptime-label').textContent = `Uptime: ${hrs}h ${mins}m ${secs}s`;
+                
+                const boxEl = document.getElementById('health-status-box');
+                const pulseEl = document.getElementById('health-pulse');
+                
+                if (health.status === 'ok') {
+                    boxEl.className = 'health-status-bar ok';
+                    boxEl.innerHTML = '<span>SYSTEM STATUS: OPERATIONAL</span>';
+                    pulseEl.className = 'pulse-dot';
+                    document.getElementById('health-event-lag').textContent = 'Normal';
+                    document.getElementById('health-event-lag').style.color = 'var(--success)';
+                } else {
+                    boxEl.className = 'health-status-bar degraded';
+                    boxEl.innerHTML = '<span>SYSTEM STATUS: DEGRADED (STALE FEED)</span>';
+                    pulseEl.className = 'pulse-dot degraded';
+                    document.getElementById('health-event-lag').textContent = 'Stale Stream Detected';
+                    document.getElementById('health-event-lag').style.color = 'var(--danger)';
+                }
+
+                document.getElementById('health-active-stores').textContent = health.stores ? health.stores.length : 0;
+            }
+
+            document.getElementById('health-last-poll').textContent = now;
+        }
+
+        function changeStore() {
+            activeStore = document.getElementById('store-select').value;
+            updateDashboard();
+        }
+
+        // Init page
+        window.addEventListener('DOMContentLoaded', () => {
+            initCharts();
+            updateDashboard();
+            setInterval(updateDashboard, refreshInterval);
+        });
+    </script>
+</body>
+</html>

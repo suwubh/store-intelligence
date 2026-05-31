@@ -18,12 +18,9 @@ DEFAULT_UNIFORM_RANGES = [
     (np.array([0,   0,   0]), np.array([180,  50, 45])),
 ]
 
-# FIX (Issue N2): Raised from 0.25 to 0.40 to reduce staff false-positive rate.
-# At 0.25, dark accessories, shadows, and dark-coloured customer clothing triggered
-# the threshold far too easily, causing ~78% of detections to be labelled as staff.
-# 0.40 requires a majority of the torso crop to match, making it robust to
-# partial dark clothing while still catching genuine all-black uniforms.
+# Threshold ratio of matched uniform pixels to torso pixels for classification
 STAFF_PIXEL_RATIO_THRESHOLD = 0.40
+
 
 
 class StaffDetector:

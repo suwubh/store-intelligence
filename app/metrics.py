@@ -2,36 +2,15 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func, and_, distinct
 
-from app.database import EventRecord, SessionRecord, POSTransaction
+from app.database import EventRecord, SessionRecord, POSTransaction, get_day_window
 from app.models import StoreMetrics, ZoneDwellMetric
-
-
-def _day_window(db: Session, store_id: str):
-    """
-    Return (day_start, day_end) anchored to the earliest event for this store.
-    Falls back to UTC today if no events exist yet.
-    """
-    earliest = db.execute(
-        select(func.min(EventRecord.timestamp)).where(EventRecord.store_id == store_id)
-    ).scalar()
-
-    if earliest:
-        day_start = earliest.replace(hour=0, minute=0, second=0, microsecond=0)
-        day_end = day_start + timedelta(days=1)
-    else:
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
-        day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        day_end = day_start + timedelta(days=1)
-
-    return day_start, day_end
 
 
 def get_store_metrics(store_id: str, db: Session) -> StoreMetrics:
     now = datetime.now(timezone.utc).replace(tzinfo=None)
-    day_start, day_end = _day_window(db, store_id)
+    day_start, day_end = get_day_window(db, store_id)
 
     # Count unique customer visitor_ids that appear in events during the day window.
-    # This works even when entry_time is NULL (floor cameras don't set entry_time).
     unique_visitors = db.execute(
         select(func.count(distinct(EventRecord.visitor_id))).where(
             and_(
@@ -43,13 +22,9 @@ def get_store_metrics(store_id: str, db: Session) -> StoreMetrics:
         )
     ).scalar() or 0
 
-    # Total unique sessions (same logic — count by distinct visitor in event window)
     total_sessions = unique_visitors  # one session per unique visitor per day
 
-    # FIX (Issue 5): Converted sessions must be scoped to today's visitors AND
-    # to the day window. Previously the query had no date filter, so on a multi-day
-    # evaluation, prior days' conversions inflated today's conversion_rate.
-    # We scope by joining to today's visitor_ids (already day-filtered above).
+    # Scope converted sessions to visitors active within the day window
     today_visitor_ids = db.execute(
         select(distinct(EventRecord.visitor_id)).where(
             and_(
@@ -76,7 +51,7 @@ def get_store_metrics(store_id: str, db: Session) -> StoreMetrics:
 
     conversion_rate = (converted_sessions / total_sessions) if total_sessions > 0 else 0.0
 
-    # Avg dwell per zone — uses only ZONE_DWELL events (not ZONE_ENTER which carry dwell_ms=0)
+    # Avg dwell per zone (uses only ZONE_DWELL events to avoid enter-event bias)
     zone_dwell_rows = db.execute(
         select(
             EventRecord.zone_id,

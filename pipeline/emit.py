@@ -30,10 +30,9 @@ class EventEmitter:
 
         self._buffer: list[dict] = []
         self._session_seq: dict[str, int] = defaultdict(int)
-        # FIX (Issue N5): Open in write mode ("w") not append mode ("a").
-        # Append mode caused stale events from prior pipeline runs to be re-ingested,
-        # corrupting metrics with duplicated data across executions.
+        # Open in write mode to clear previous runs' events and prevent duplication
         self._file = open(self.output_path, "w")
+
 
     def emit(
         self,

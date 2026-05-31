@@ -9,3 +9,5 @@ __pycache__/
 *.onnx
 dataset/clips/
 dataset/camera_samples/
+*.db-shm
+*.db-wal

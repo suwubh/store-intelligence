@@ -11,8 +11,4 @@ rich==13.7.1
 ultralytics==8.4.57
 opencv-python-headless==4.9.0.80
 numpy==1.26.4
-pandas==2.2.2
-scipy==1.13.0
-aiofiles==23.2.1
 python-multipart==0.0.9
-alembic==1.13.1

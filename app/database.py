@@ -1,13 +1,14 @@
 from sqlalchemy import (
     create_engine, Column, String, Float, Integer,
-    Boolean, DateTime, Text, Index, event
+    Boolean, DateTime, Text, Index, event, select, func
 )
-from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from sqlalchemy.orm import DeclarativeBase, sessionmaker, Session
 from sqlalchemy.pool import StaticPool
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import os
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./store_intelligence.db")
+
 
 # SQLite performance pragmas
 def set_sqlite_pragma(dbapi_conn, connection_record):
@@ -102,3 +103,24 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def get_day_window(db: Session, store_id: str) -> tuple[datetime, datetime]:
+    """
+    Return (day_start, day_end) anchored to the earliest event for this store.
+    Falls back to UTC today if no events exist yet.
+    """
+    earliest = db.execute(
+        select(func.min(EventRecord.timestamp)).where(EventRecord.store_id == store_id)
+    ).scalar()
+
+    if earliest:
+        day_start = earliest.replace(hour=0, minute=0, second=0, microsecond=0)
+        day_end = day_start + timedelta(days=1)
+    else:
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        day_end = day_start + timedelta(days=1)
+
+    return day_start, day_end
+
