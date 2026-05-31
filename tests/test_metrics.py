@@ -1,3 +1,5 @@
+# PROMPT: Add tests for metrics, funnel, and heatmap calculations, including visitor counting, conversion rates, queue depth tracking, funnel progression, heatmap scoring, and confidence thresholds.
+# CHANGES MADE: Extracted common helpers into conftest.py, switched to UUID-based test IDs, and added explicit funnel order assertions.
 import pytest
 import uuid
 

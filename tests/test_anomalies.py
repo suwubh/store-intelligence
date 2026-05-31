@@ -1,3 +1,5 @@
+# PROMPT: Add tests for anomaly detection covering queue spikes, severity levels, empty-store behavior, suggested actions, and conversion drop scenarios.
+# CHANGES MADE: Reused shared fixtures from conftest.py and added explicit validation of anomaly types and suggested actions.
 import pytest
 
 class TestAnomalies:

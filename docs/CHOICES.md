@@ -85,6 +85,27 @@ The write pattern is also amenable to SQLite: events are ingested in batches (up
 
 ---
 
+
+## Decision 4: API Architecture — Synchronous FastAPI Ingest
+
+### Options Considered
+
+| Option | Pros | Cons |
+|--------|------|------|
+| **Synchronous FastAPI ingest** | Simple, deterministic, easy to debug, no worker coordination | Not ideal for very high throughput |
+| Async background workers | Better for large queues and long-running jobs | More moving parts, harder to reason about, more failure modes |
+| Streaming ingest pipeline | Near real-time processing | Overkill for a batch-based hackathon submission |
+
+### What I Chose and Why
+
+I used a synchronous FastAPI API with direct ingest into the service layer. That keeps the pipeline simple: each request is processed end-to-end, then persisted immediately. For this project, batch sizes are small, ingestion is bounded, and the priority is reliability over maximum throughput.
+
+I did not add background workers because they would introduce extra orchestration, state handling, and retry logic without improving the submitted use case. A single-process architecture is also easier to test locally and matches the `docker compose up` requirement.
+
+**What would make me change this decision:** If ingest volume increased significantly or clips had to be processed continuously across multiple stores, I would move event processing into a background queue and keep FastAPI as the front door only.
+
+---
+
 ## Summary Table
 
 | Decision | Chosen | Rejected | Primary Reason |
@@ -93,4 +114,5 @@ The write pattern is also amenable to SQLite: events are ingested in batches (up
 | Zone classification | Polygon-based | VLM frame crops | Deterministic, zero latency, no cost |
 | Schema design | Events + materialised sessions | Flat events only | Query performance at metric endpoints |
 | Storage | SQLite | PostgreSQL | Zero-config docker compose up |
+| API architecture | Synchronous FastAPI ingest | Async workers, streaming pipeline | Simplicity + deterministic request handling |
 | Staff detection | HSV colour (black uniform) | Re-ID embeddings | Uniform colour is known and consistent |

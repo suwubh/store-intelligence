@@ -1,3 +1,5 @@
+# PROMPT: Create shared pytest fixtures for database setup, API client configuration, event generation, and event ingestion helpers.
+# CHANGES MADE: Ensured fixture isolation, cleaned up sessions after tests, and reset dependency overrides.
 import pytest
 import uuid
 from datetime import datetime, timezone, timedelta

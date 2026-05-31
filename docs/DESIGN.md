@@ -153,6 +153,12 @@ An AI review identified that the original CAM_BILLING_01 zone polygons only cove
 
 ---
 
+## Known Limitations with Evaluation Dataset
+
+The evaluation clip covers only about 2.5 minutes of footage at store opening (10:00–10:02 IST), so no POS transactions fall inside the 5-minute conversion window. A conversion_rate of 0.0 is therefore expected behaviour, not a bug. The health endpoint showing degraded is also expected because the ingested events are historical rather than live streaming data; in production, that state would normally clear once fresh events start arriving.
+
+---
+
 ## Known Limitations
 
 - **Cross-camera deduplication** is not implemented. The same physical person appearing in CAM 1 and CAM 2 gets two visitor IDs. For conversion rate calculation this is conservative (overcounts visitors, undercounts conversion).
