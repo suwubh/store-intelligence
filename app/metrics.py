@@ -17,11 +17,11 @@ def _day_window(db: Session, store_id: str):
 
     if earliest:
         day_start = earliest.replace(hour=0, minute=0, second=0, microsecond=0)
-        day_end   = day_start + timedelta(days=1)
+        day_end = day_start + timedelta(days=1)
     else:
         now = datetime.now(timezone.utc).replace(tzinfo=None)
         day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        day_end   = day_start + timedelta(days=1)
+        day_end = day_start + timedelta(days=1)
 
     return day_start, day_end
 
@@ -59,16 +59,30 @@ def get_store_metrics(store_id: str, db: Session) -> StoreMetrics:
     # Total unique sessions (same logic — count by distinct visitor in event window)
     total_sessions = unique_visitors  # one session per unique visitor per day
 
-    # Converted sessions
-    converted_sessions = db.execute(
-        select(func.count()).where(
+    # Converted sessions — scoped to today's visitors only
+    today_visitor_ids = db.execute(
+        select(distinct(EventRecord.visitor_id)).where(
             and_(
-                SessionRecord.store_id == store_id,
-                SessionRecord.is_staff == False,
-                SessionRecord.converted == True,
+                EventRecord.store_id == store_id,
+                EventRecord.is_staff == False,
+                EventRecord.timestamp >= day_start,
+                EventRecord.timestamp < day_end,
             )
         )
-    ).scalar() or 0
+    ).scalars().all()
+
+    converted_sessions = 0
+    if today_visitor_ids:
+        converted_sessions = db.execute(
+            select(func.count()).where(
+                and_(
+                    SessionRecord.store_id == store_id,
+                    SessionRecord.is_staff == False,
+                    SessionRecord.converted == True,
+                    SessionRecord.visitor_id.in_(today_visitor_ids),
+                )
+            )
+        ).scalar() or 0
 
     conversion_rate = (converted_sessions / total_sessions) if total_sessions > 0 else 0.0
 
@@ -84,6 +98,7 @@ def get_store_metrics(store_id: str, db: Session) -> StoreMetrics:
                 EventRecord.event_type == "ZONE_DWELL",
                 EventRecord.is_staff == False,
                 EventRecord.timestamp >= day_start,
+                EventRecord.timestamp < day_end,
                 EventRecord.zone_id.isnot(None),
             )
         ).group_by(EventRecord.zone_id)
@@ -114,11 +129,14 @@ def get_store_metrics(store_id: str, db: Session) -> StoreMetrics:
 
     # Abandonment rate
     billing_visitors = db.execute(
-        select(func.count()).where(
+        select(func.count(distinct(EventRecord.visitor_id))).where(
             and_(
-                SessionRecord.store_id == store_id,
-                SessionRecord.is_staff == False,
-                SessionRecord.visited_billing == True,
+                EventRecord.store_id == store_id,
+                EventRecord.is_staff == False,
+                EventRecord.timestamp >= day_start,
+                EventRecord.timestamp < day_end,
+                EventRecord.event_type.in_(["BILLING_QUEUE_JOIN", "ZONE_ENTER"]),
+                EventRecord.zone_id.in_(["BILLING_COUNTER", "BILLING_QUEUE", "BILLING"]),
             )
         )
     ).scalar() or 0
@@ -129,6 +147,8 @@ def get_store_metrics(store_id: str, db: Session) -> StoreMetrics:
                 EventRecord.store_id == store_id,
                 EventRecord.event_type == "BILLING_QUEUE_ABANDON",
                 EventRecord.is_staff == False,
+                EventRecord.timestamp >= day_start,
+                EventRecord.timestamp < day_end,
             )
         )
     ).scalar() or 0

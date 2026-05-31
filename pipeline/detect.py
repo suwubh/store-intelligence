@@ -18,6 +18,8 @@ from pipeline.staff_detector import StaffDetector
 
 logger = logging.getLogger(__name__)
 
+BILLING_ZONES_SET = {"BILLING_COUNTER", "BILLING_QUEUE", "BILLING"}
+
 
 def parse_args():
     p = argparse.ArgumentParser(description="CCTV detection pipeline")
@@ -36,8 +38,6 @@ def parse_args():
 def get_clip_start_time(clip_start_arg, video_path):
     if clip_start_arg:
         return datetime.fromisoformat(clip_start_arg.replace("Z", "+00:00"))
-    # Use timestamp embedded in CCTV frame overlay if possible, else file mtime
-    # The clips show "10/04/2026 HH:MM:SS" — use 10 Apr 2026 as base date
     mtime = Path(video_path).stat().st_mtime
     return datetime.fromtimestamp(mtime, tz=timezone.utc)
 
@@ -71,10 +71,8 @@ def get_entry_line_ratio(layout_path, camera_id):
 def run_pipeline(args):
     from ultralytics import YOLO
 
-    # Skip storeroom cameras entirely
     if is_storeroom_camera(args.layout, args.camera):
         logger.info(f"Camera {args.camera} is marked exclude_from_metrics=true. Skipping.")
-        # Write zero events file so run.sh doesn't error
         Path(args.output).parent.mkdir(parents=True, exist_ok=True)
         Path(args.output).touch()
         return
@@ -82,12 +80,10 @@ def run_pipeline(args):
     logger.info(f"Loading YOLOv8s on {args.device}")
     model = YOLO("yolov8s.pt")
 
-    # Load staff detector with correct BLACK uniform ranges for this store
-    # Brigade Bangalore staff wear all-black (observed in CAM 1, 2, 5)
     import numpy as np
     black_ranges = [
-        (np.array([0,   0,   0]),  np.array([180, 255, 60])),   # very dark any hue
-        (np.array([0,   0,   0]),  np.array([180, 80,  80])),   # dark low-saturation
+        (np.array([0, 0, 0]), np.array([180, 255, 60])),
+        (np.array([0, 0, 40]), np.array([180, 60, 100])),
     ]
     staff_detector = StaffDetector(uniform_ranges=black_ranges)
 
@@ -108,10 +104,8 @@ def run_pipeline(args):
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     clip_start = get_clip_start_time(args.clip_start, args.video)
 
-    # Read entry line ratio from layout (CAM_ENTRY_01 = 0.55 for this store)
     is_entry_camera = "ENTRY" in args.camera.upper()
     entry_line_ratio = get_entry_line_ratio(args.layout, args.camera)
-    is_billing_camera = "BILLING" in args.camera.upper()
 
     logger.info(
         f"Processing {total_frames} frames @ {fps:.1f}fps | "
@@ -120,9 +114,8 @@ def run_pipeline(args):
     )
 
     frame_idx = 0
-    PROCESS_EVERY_N = 2  # 7.5 effective fps from 15fps clips
-    # Per-visitor mutable state stored here (not in tracker dict copy)
-    visitor_state = {}   # visitor_id -> {prev_zone, zone_dwell_ms, dwell_emits, queue_joined}
+    PROCESS_EVERY_N = 2
+    visitor_state = {}
 
     while True:
         ret, frame = cap.read()
@@ -150,9 +143,6 @@ def run_pipeline(args):
 
         tracked_objects = tracker.update(detections, frame, timestamp, entry_line_ratio=entry_line_ratio)
 
-        frame_h, frame_w = frame.shape[:2]
-        entry_line_y = int(frame_h * entry_line_ratio)
-
         for obj in tracked_objects:
             visitor_id = obj["visitor_id"]
             bbox = obj["bbox"]
@@ -160,7 +150,6 @@ def run_pipeline(args):
             cx = (bbox[0] + bbox[2]) / 2
             cy = (bbox[1] + bbox[3]) / 2
 
-            # Initialize per-visitor state
             if visitor_id not in visitor_state:
                 visitor_state[visitor_id] = {
                     "prev_zone": None,
@@ -173,7 +162,6 @@ def run_pipeline(args):
             is_staff = staff_detector.is_staff(frame, bbox)
             zone_id = zone_mapper.get_zone(cx, cy)
 
-            # ── Entry/exit events (entry camera only) ─────────────────────
             if is_entry_camera:
                 direction = obj.get("direction")
                 if obj.get("just_crossed"):
@@ -199,8 +187,7 @@ def run_pipeline(args):
                             confidence=confidence,
                         )
 
-            # ── Zone events ───────────────────────────────────────────────
-            if zone_id and zone_id not in ("ENTRY_EXTERIOR",):  # skip exterior polygon
+            if zone_id and zone_id not in ("ENTRY_EXTERIOR",):
                 prev_zone = vs["prev_zone"]
 
                 if prev_zone != zone_id:
@@ -214,6 +201,19 @@ def run_pipeline(args):
                             is_staff=is_staff,
                             confidence=confidence,
                         )
+
+                        if prev_zone.upper() in BILLING_ZONES_SET and vs.get("queue_joined") and not is_staff:
+                            emitter.emit(
+                                visitor_id=visitor_id,
+                                event_type="BILLING_QUEUE_ABANDON",
+                                timestamp=timestamp,
+                                zone_id=prev_zone,
+                                dwell_ms=int(vs["zone_dwell_ms"]),
+                                is_staff=is_staff,
+                                confidence=confidence,
+                            )
+                            vs["queue_joined"] = False
+
                     emitter.emit(
                         visitor_id=visitor_id,
                         event_type="ZONE_ENTER",
@@ -227,10 +227,8 @@ def run_pipeline(args):
                     vs["zone_dwell_ms"] = 0.0
                     vs["dwell_emits"] = 0
 
-                # Accumulate dwell time
                 vs["zone_dwell_ms"] += (PROCESS_EVERY_N / fps) * 1000
 
-                # ZONE_DWELL every 30 seconds
                 dwell_intervals = int(vs["zone_dwell_ms"] / 30000)
                 if dwell_intervals > vs["dwell_emits"]:
                     emitter.emit(
@@ -244,9 +242,13 @@ def run_pipeline(args):
                     )
                     vs["dwell_emits"] = dwell_intervals
 
-                # ── Billing queue logic ───────────────────────────────────
-                if zone_id.upper() in ("BILLING_COUNTER", "BILLING_QUEUE", "BILLING"):
-                    queue_depth = tracker.get_queue_depth()
+                if zone_id.upper() in BILLING_ZONES_SET:
+                    queue_depth = sum(
+                        1
+                        for vid, other_vs in visitor_state.items()
+                        if vid != visitor_id
+                        and (other_vs.get("prev_zone") or "").upper() in BILLING_ZONES_SET
+                    )
                     if not vs["queue_joined"]:
                         emitter.emit(
                             visitor_id=visitor_id,
@@ -259,6 +261,8 @@ def run_pipeline(args):
                             queue_depth=queue_depth,
                         )
                         vs["queue_joined"] = True
+                else:
+                    vs["queue_joined"] = False
 
         if frame_idx % 450 == 0:
             pct = (frame_idx / total_frames) * 100 if total_frames else 0

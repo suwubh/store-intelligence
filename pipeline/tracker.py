@@ -1,6 +1,7 @@
 """
-Tracker module — ByteTrack-based tracking with appearance re-ID.
-Falls back to centroid + IoU tracking if ByteTrack is unavailable.
+Tracker module — wraps ByteTrack-style tracking with appearance Re-ID.
+Falls back to centroid + IoU tracking if ByteTrack is unavailable or the
+installed Ultralytics tracker API does not match the expected signature.
 """
 from __future__ import annotations
 
@@ -35,6 +36,7 @@ class TrackState:
         self.last_y: float | None = None
         self.is_active: bool = True
         self.confidence: float = 1.0
+        self.was_reentry: bool = False
 
 
 class MultiObjectTracker:
@@ -46,6 +48,9 @@ class MultiObjectTracker:
         self._lost_counters: dict[str, int] = defaultdict(int)
 
         self._use_bytetrack = False
+        self._bytetracker = None
+        self._bt_args = None
+
         try:
             from ultralytics.trackers.byte_tracker import BYTETracker
 
@@ -68,6 +73,8 @@ class MultiObjectTracker:
 
         if self._use_bytetrack:
             tracked = self._bytetrack_update(detections, frame, timestamp, frame_h, frame_w)
+            if tracked is None:
+                tracked = self._iou_update(detections, frame, timestamp)
         else:
             tracked = self._iou_update(detections, frame, timestamp)
 
@@ -107,36 +114,71 @@ class MultiObjectTracker:
         return results
 
     def _bytetrack_update(self, detections, frame, timestamp, frame_h, frame_w):
-        import torch
-        from ultralytics.engine.results import Boxes
-
         if not detections:
             return []
 
-        # BYTETracker expects a Boxes-like object with xyxy/conf/cls.
-        # Shape: [x1, y1, x2, y2, conf, cls]
-        dets = np.array(
-            [[*d["bbox"], d["confidence"], 0.0] for d in detections],
-            dtype=np.float32,
-        )
-        boxes = Boxes(np.ascontiguousarray(dets), orig_shape=(frame_h, frame_w))
+        payloads = self._build_bytetrack_payloads(detections, frame_h, frame_w)
+        if not payloads:
+            return None
+
+        call_variants = []
+        for payload_name, payload in payloads:
+            call_variants.extend([
+                (payload_name, payload, (frame_h, frame_w), (frame_h, frame_w)),
+                (payload_name, payload, [frame_h, frame_w], [frame_h, frame_w]),
+                (payload_name, payload, frame, None),
+                (payload_name, payload, None, None),
+            ])
+
+        last_error = None
+        for _, payload, a, b in call_variants:
+            try:
+                if a is None and b is None:
+                    online_targets = self._bytetracker.update(payload)
+                elif b is None:
+                    online_targets = self._bytetracker.update(payload, a)
+                else:
+                    online_targets = self._bytetracker.update(payload, a, b)
+
+                parsed = self._parse_bytetrack_targets(online_targets, frame, timestamp)
+                if parsed is not None:
+                    return parsed
+            except TypeError as e:
+                last_error = e
+                continue
+            except Exception as e:
+                last_error = e
+                continue
+
+        logger.warning(f"ByteTrack update failed ({last_error}); using IoU tracker")
+        return None
+
+    def _build_bytetrack_payloads(self, detections, frame_h, frame_w):
+        dets = np.array([[*d["bbox"], d["confidence"], 0.0] for d in detections], dtype=np.float32)
+        payloads = []
 
         try:
-            # Different ultralytics versions may accept Boxes or a tensor-like object.
-            online_targets = self._bytetracker.update(boxes, frame)
+            from ultralytics.engine.results import Boxes
+            payloads.append(("boxes", Boxes(np.ascontiguousarray(dets), orig_shape=(frame_h, frame_w))))
         except Exception:
-            try:
-                online_targets = self._bytetracker.update(torch.as_tensor(dets), [frame_h, frame_w], [frame_h, frame_w])
-            except Exception as e:
-                logger.warning(f"ByteTrack update error: {e}")
-                return self._iou_update(detections, frame, timestamp)
+            pass
 
+        payloads.append(("ndarray", np.ascontiguousarray(dets)))
+
+        try:
+            import torch
+            payloads.append(("tensor", torch.as_tensor(dets)))
+        except Exception:
+            pass
+
+        return payloads
+
+    def _parse_bytetrack_targets(self, online_targets, frame, timestamp):
         if online_targets is None:
-            return []
+            return None
 
         results = []
         for t in online_targets:
-            # Current ultralytics versions often return STrack-like objects.
             if hasattr(t, "tlwh"):
                 tlwh = t.tlwh
                 x1, y1 = float(tlwh[0]), float(tlwh[1])
@@ -145,19 +187,16 @@ class MultiObjectTracker:
                 score = float(getattr(t, "score", getattr(t, "conf", 1.0)))
             else:
                 row = np.asarray(t).astype(float).ravel()
-                if row.size < 5:
+                if row.size < 4:
                     continue
                 x1, y1, x2, y2 = row[:4]
-                track_id = str(int(row[4]))
+                if row.size >= 5:
+                    track_id = str(int(row[4]))
+                else:
+                    track_id = f"T{len(results)}"
                 score = float(row[5]) if row.size > 5 else 1.0
 
-            visitor_id = self._get_or_create_visitor(
-                track_id,
-                [x1, y1, x2, y2],
-                frame,
-                timestamp,
-                score,
-            )
+            visitor_id = self._get_or_create_visitor(track_id, [x1, y1, x2, y2], frame, timestamp, score)
             results.append(
                 {
                     "visitor_id": visitor_id,
@@ -165,6 +204,7 @@ class MultiObjectTracker:
                     "confidence": score,
                 }
             )
+
         return results
 
     def _iou_update(self, detections, frame, timestamp) -> list[dict]:
@@ -227,9 +267,10 @@ class MultiObjectTracker:
 
     def _get_or_create_visitor(self, track_id, bbox, frame, timestamp, score) -> str:
         if track_id in self.tracks:
-            self.tracks[track_id].bbox = bbox
-            self.tracks[track_id].last_seen = timestamp
-            self.tracks[track_id].confidence = score
+            state = self.tracks[track_id]
+            state.bbox = bbox
+            state.last_seen = timestamp
+            state.confidence = score
             self._lost_counters[track_id] = 0
             return track_id
 
@@ -239,24 +280,33 @@ class MultiObjectTracker:
     def _new_visitor(self, bbox, appearance, timestamp, confidence, preferred_id=None) -> str:
         if self.reid_enabled and appearance is not None:
             for exited in list(self.exited_tracks):
-                if exited.appearance is not None:
-                    sim = _cosine_similarity(appearance, exited.appearance)
-                    time_since_exit = (timestamp - exited.last_seen).total_seconds()
-                    if sim > REID_APPEARANCE_THRESHOLD and time_since_exit < REENTRY_GRACE_PERIOD_SECONDS * 10:
-                        vid = exited.visitor_id
-                        exited.is_active = True
-                        self.exited_tracks.remove(exited)
-                        self.tracks[vid] = TrackState(vid, bbox, timestamp, appearance)
-                        self.tracks[vid].confidence = confidence
-                        return vid
+                if exited.appearance is None:
+                    continue
+                sim = _cosine_similarity(appearance, exited.appearance)
+                time_since_exit = (timestamp - exited.last_seen).total_seconds()
+                if sim > REID_APPEARANCE_THRESHOLD and time_since_exit < REENTRY_GRACE_PERIOD_SECONDS * 10:
+                    vid = exited.visitor_id
+                    exited.is_active = True
+                    self.exited_tracks.remove(exited)
+
+                    new_state = TrackState(vid, bbox, timestamp, appearance)
+                    new_state.confidence = confidence
+                    new_state.was_reentry = True
+                    self.tracks[vid] = new_state
+                    return vid
 
         vid = preferred_id or f"VIS_{uuid.uuid4().hex[:6]}"
-        self.tracks[vid] = TrackState(vid, bbox, timestamp, appearance)
-        self.tracks[vid].confidence = confidence
+        state = TrackState(vid, bbox, timestamp, appearance)
+        state.confidence = confidence
+        self.tracks[vid] = state
         return vid
 
     def is_reentry(self, visitor_id: str) -> bool:
-        return any(t.visitor_id == visitor_id for t in self.exited_tracks)
+        state = self.tracks.get(visitor_id)
+        if state and state.was_reentry:
+            state.was_reentry = False
+            return True
+        return False
 
     def get_queue_depth(self) -> int:
         billing_tracks = sum(
@@ -280,8 +330,6 @@ class MultiObjectTracker:
             self._lost_counters.pop(vid, None)
 
 
-# ── Helpers ────────────────────────────────────────────────────────────────────
-
 def _iou(boxA: list, boxB: list) -> float:
     xA = max(boxA[0], boxB[0])
     yA = max(boxA[1], boxB[1])
@@ -303,6 +351,8 @@ def _extract_appearance(frame: np.ndarray, bbox: list) -> np.ndarray | None:
         if x2 <= x1 or y2 <= y1:
             return None
         crop = frame[y1:y2, x1:x2]
+        if crop.size == 0:
+            return None
         hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
         hist = cv2.calcHist([hsv], [0, 1], None, [16, 16], [0, 180, 0, 256])
         cv2.normalize(hist, hist)

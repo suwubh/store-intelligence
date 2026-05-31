@@ -1,4 +1,3 @@
-@"
 .venv/
 __pycache__/
 *.pyc
@@ -11,4 +10,3 @@ __pycache__/
 dataset/clips/
 dataset/events/
 dataset/camera_samples/
-"@ | Out-File -FilePath .gitignore -Encoding utf8

@@ -62,16 +62,30 @@ def get_store_funnel(store_id: str, db: Session) -> FunnelResponse:
         )
     ).scalar() or 0
 
-    # Purchasers (converted sessions)
-    purchasers = db.execute(
-        select(func.count()).where(
+    # Purchasers (converted sessions) — scoped to day window via event timestamps
+    converted_visitors = db.execute(
+        select(distinct(EventRecord.visitor_id)).where(
             and_(
-                SessionRecord.store_id == store_id,
-                SessionRecord.is_staff == False,
-                SessionRecord.converted == True,
+                EventRecord.store_id == store_id,
+                EventRecord.is_staff == False,
+                EventRecord.timestamp >= day_start,
+                EventRecord.timestamp < day_end,
             )
         )
-    ).scalar() or 0
+    ).scalars().all()
+
+    purchasers = 0
+    if converted_visitors:
+        purchasers = db.execute(
+            select(func.count()).where(
+                and_(
+                    SessionRecord.store_id == store_id,
+                    SessionRecord.is_staff == False,
+                    SessionRecord.converted == True,
+                    SessionRecord.visitor_id.in_(converted_visitors),
+                )
+            )
+        ).scalar() or 0
 
     def drop_off(current, previous):
         if previous == 0:
