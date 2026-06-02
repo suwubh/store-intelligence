@@ -26,7 +26,7 @@ def parse_args():
     p.add_argument("--video", required=True)
     p.add_argument("--store", required=True)
     p.add_argument("--camera", required=True)
-    p.add_argument("--layout", default="dataset/store_layout.json")
+    p.add_argument("--layout", default=None, help="Path to store_layout.json (default: beside the video)")
     p.add_argument("--output", default="dataset/events.jsonl")
     p.add_argument("--clip-start", default=None)
     p.add_argument("--api-url", default=None)
@@ -68,8 +68,17 @@ def get_entry_line_ratio(layout_path, camera_id):
         return 0.40
 
 
+def _resolve_layout_path(args) -> str:
+    if args.layout:
+        return args.layout
+    video_dir = Path(args.video).resolve().parent
+    return str(video_dir / "store_layout.json")
+
+
 def run_pipeline(args):
     from ultralytics import YOLO
+
+    args.layout = _resolve_layout_path(args)
 
     if is_storeroom_camera(args.layout, args.camera):
         logger.info(f"Camera {args.camera} is marked exclude_from_metrics=true. Skipping.")
@@ -252,16 +261,15 @@ def run_pipeline(args):
                     vs["dwell_emits"] = dwell_intervals
 
                 if zone_id.upper() in BILLING_ZONES_SET:
-                    # Calculate queue depth directly from visitor state
-                    queue_depth = sum(
+                    others_waiting = sum(
                         1
                         for vid2, other_vs in visitor_state.items()
                         if vid2 != visitor_id
                         and (other_vs.get("prev_zone") or "").upper() in BILLING_ZONES_SET
                     )
+                    queue_depth = others_waiting + 1
 
-                    # Trigger queue join if a queue exists
-                    if not vs["queue_joined"] and queue_depth > 0:
+                    if not vs["queue_joined"]:
                         emitter.emit(
                             visitor_id=visitor_id,
                             event_type="BILLING_QUEUE_JOIN",

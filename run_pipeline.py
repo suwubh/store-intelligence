@@ -1,184 +1,163 @@
 #!/usr/bin/env python3
 """
-run_pipeline.py — cross-platform pipeline runner (Windows/Mac/Linux)
-Usage: python run_pipeline.py [--api-url http://localhost:8000] [--store ST1008] [--device cpu]
+Process CCTV clips for one or all stores under dataset/clips/<Store folder>/.
+
+Each store folder contains clips + store_layout.json (+ layout PNG).
+
+Usage:
+  python run_pipeline.py --store-folder "Store 1"
+  python run_pipeline.py --all-stores
+  python run_pipeline.py --store-folder "Store 1" --api-url http://localhost:8000
 """
 import argparse
 import json
-import os
 import subprocess
 import sys
 import urllib.request
 from pathlib import Path
 
+from pipeline.layout_builder import list_store_clip_dirs, load_store_layout, normalize_store_id
+
 
 def parse_args():
     p = argparse.ArgumentParser()
-    p.add_argument("--store",      default="ST1008")
-    p.add_argument("--device",     default="cpu")
-    p.add_argument("--dataset",    default="dataset")
-    p.add_argument("--api-url",    default=None)
-    p.add_argument("--clip-start", default="2026-04-10T10:00:00Z")
+    p.add_argument("--store-folder", help='Clip folder name under dataset/clips, e.g. "Store 1"')
+    p.add_argument("--all-stores", action="store_true", help="Process every store folder with clips")
+    p.add_argument("--device", default="cpu")
+    p.add_argument("--dataset", default="dataset")
+    p.add_argument("--api-url", default=None)
+    p.add_argument("--clip-start", default=None, help="ISO UTC anchor for timestamps (default: video mtime)")
     return p.parse_args()
+
+
+def process_store(store_dir: Path, dataset: Path, device: str, api_url: str | None, clip_start: str | None):
+    layout = load_store_layout(store_dir)
+    store_id = layout["store_id"]
+    layout_path = store_dir / "store_layout.json"
+    output_dir = dataset / "events"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    source_map = {
+        cam.get("source_file", "").lower(): cam_id
+        for cam_id, cam in layout.get("cameras", {}).items()
+        if cam.get("source_file")
+    }
+
+    video_extensions = {".mp4", ".avi", ".mov", ".mkv"}
+    videos = sorted(p for p in store_dir.iterdir() if p.suffix.lower() in video_extensions)
+
+    print()
+    print("═══════════════════════════════════════════")
+    print(f"  Store      : {store_id} ({store_dir.name})")
+    print(f"  Layout     : {layout_path}")
+    print(f"  Clips      : {len(videos)}")
+    print("═══════════════════════════════════════════")
+
+    total_events = 0
+    cam_counts: dict[str, int] = {}
+
+    for clip_path in videos:
+        cam_id = source_map.get(clip_path.name.lower())
+        if not cam_id:
+            print(f"  SKIP  {clip_path.name} (not in store_layout.json)")
+            continue
+
+        cam_data = layout["cameras"][cam_id]
+        if cam_data.get("exclude_from_metrics"):
+            print(f"  SKIP  {clip_path.name} → {cam_id} (exclude_from_metrics)")
+            continue
+
+        cam_counts[cam_id] = cam_counts.get(cam_id, 0) + 1
+        out_suffix = cam_id if cam_counts[cam_id] == 1 else f"{cam_id}_{cam_counts[cam_id]:02d}"
+        out_file = output_dir / f"{store_id}_{out_suffix}_events.jsonl"
+
+        print(f"  → {clip_path.name}  |  {cam_id}  |  {out_file.name}")
+
+        cmd = [
+            sys.executable, "-m", "pipeline.detect",
+            "--video", str(clip_path),
+            "--store", store_id,
+            "--camera", cam_id,
+            "--layout", str(layout_path),
+            "--output", str(out_file),
+            "--device", device,
+        ]
+        if clip_start:
+            cmd += ["--clip-start", clip_start]
+        if api_url:
+            cmd += ["--api-url", api_url]
+
+        result = subprocess.run(cmd)
+        if result.returncode != 0:
+            print(f"     ERROR exit {result.returncode}")
+            continue
+        count = sum(1 for line in out_file.read_text(encoding="utf-8").splitlines() if line.strip())
+        total_events += count
+        print(f"     {count} events")
+
+    print(f"  Total events for {store_id}: {total_events}")
+
+    if api_url:
+        ingest_store_events(output_dir, store_id, api_url)
+
+    return total_events
+
+
+def ingest_store_events(output_dir: Path, store_id: str, api_url: str):
+    print(f"  Ingesting {store_id} → {api_url}")
+    for ef in sorted(output_dir.glob(f"{store_id}_*_events.jsonl")):
+        events = []
+        for line in ef.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                events.append(json.loads(line))
+        if not events:
+            continue
+        for i in range(0, len(events), 500):
+            batch = events[i : i + 500]
+            payload = json.dumps({"events": batch}).encode()
+            req = urllib.request.Request(
+                f"{api_url}/events/ingest",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=60) as r:
+                res = json.loads(r.read())
+                print(f"    {ef.name}: accepted={res.get('accepted')} dup={res.get('duplicate')}")
 
 
 def main():
     args = parse_args()
+    dataset = Path(args.dataset)
+    stores = list_store_clip_dirs(dataset)
 
-    layout_path  = Path(args.dataset) / "store_layout.json"
-    clips_dir    = Path(args.dataset) / "clips" / args.store
-    output_dir   = Path(args.dataset) / "events"
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    print()
-    print("╔══════════════════════════════════════════╗")
-    print("║  Store Intelligence Detection Pipeline   ║")
-    print("╚══════════════════════════════════════════╝")
-    print(f"  Store     : {args.store}")
-    print(f"  Clips     : {clips_dir}")
-    print(f"  Output    : {output_dir}")
-    print(f"  Layout    : {layout_path}")
-    print(f"  Device    : {args.device}")
-    print(f"  ClipStart : {args.clip_start}")
-    if args.api_url:
-        print(f"  API       : {args.api_url}")
-    print()
-
-    if not clips_dir.exists():
-        print(f"ERROR: Clips directory not found: {clips_dir}")
-        print(f"       Make sure your clips are at:  {clips_dir}\\CAM 1.mp4  etc.")
+    if not stores:
+        print(f"ERROR: No store folders with .mp4 under {dataset / 'clips'}")
         sys.exit(1)
 
-    if not layout_path.exists():
-        print(f"ERROR: store_layout.json not found at {layout_path}")
-        sys.exit(1)
+    if args.all_stores:
+        targets = stores
+    elif args.store_folder:
+        targets = [dataset / "clips" / args.store_folder]
+        if not targets[0].is_dir():
+            print(f"ERROR: {targets[0]} not found")
+            sys.exit(1)
+    else:
+        targets = [stores[0]]
+        print(f"No --store-folder set; using {targets[0].name}")
 
-    with open(layout_path) as f:
-        layout = json.load(f)
-
-    # Build filename → camera_id map from source_file fields
-    source_file_map = {}
-    for cam_id, cam_data in layout.get("cameras", {}).items():
-        sf = cam_data.get("source_file", "")
-        if sf:
-            source_file_map[sf.lower()] = cam_id
-
-    print(f"Camera map from store_layout.json:")
-    for sf, cam in source_file_map.items():
-        exclude = layout["cameras"][cam].get("exclude_from_metrics", False)
-        print(f"  {sf!r:25s} → {cam}  {'(SKIP — storeroom)' if exclude else ''}")
-    print()
-
-    # Find all video files
-    video_extensions = {".mp4", ".avi", ".mov", ".mkv"}
-    video_files = sorted([
-        f for f in clips_dir.iterdir()
-        if f.suffix.lower() in video_extensions
-    ])
-
-    if not video_files:
-        print(f"ERROR: No video files found in {clips_dir}")
-        sys.exit(1)
-
-    print(f"Found {len(video_files)} video file(s)")
-
-    total_events = 0
-
-    for clip_path in video_files:
-        fname = clip_path.name
-        cam_id = source_file_map.get(fname.lower())
-
-        if cam_id is None:
-            print(f"  SKIP  {fname!r} — not in store_layout.json source_file map")
-            continue
-
-        cam_data = layout["cameras"][cam_id]
-        if cam_data.get("exclude_from_metrics", False):
-            print(f"  SKIP  {fname!r} → {cam_id} (storeroom — excluded from metrics)")
-            continue
-
-        out_file = output_dir / f"{args.store}_{cam_id}_events.jsonl"
-        print(f"  Processing  {fname!r}  →  {cam_id}")
-        print(f"  Output   →  {out_file.name}")
-
-        cmd = [
-            sys.executable, "-m", "pipeline.detect",
-            "--video",       str(clip_path),
-            "--store",       args.store,
-            "--camera",      cam_id,
-            "--layout",      str(layout_path),
-            "--output",      str(out_file),
-            "--clip-start",  args.clip_start,
-            "--device",      args.device,
-        ]
-        if args.api_url:
-            cmd += ["--api-url", args.api_url]
-
-        result = subprocess.run(cmd)
-
-        if result.returncode == 0:
-            count = 0
-            try:
-                count = sum(1 for line in open(out_file) if line.strip())
-            except Exception:
-                pass
-            total_events += count
-            print(f"  ✅  {count} events  →  {out_file.name}")
-        else:
-            print(f"  ❌  Detection failed for {fname!r} (exit code {result.returncode})")
-
-        print()
-
-    print("═══════════════════════════════════════════")
-    print(f"  Total events emitted: {total_events}")
-    print("═══════════════════════════════════════════")
-
-    # Ingest into API if requested
-    if args.api_url:
-        print()
-        print(f"📡  Ingesting all events into {args.api_url} ...")
-        event_files = sorted(output_dir.glob("*.jsonl"))
-        for ef in event_files:
-            events = []
-            with open(ef) as f:
-                for line in f:
-                    line = line.strip()
-                    if line:
-                        try:
-                            events.append(json.loads(line))
-                        except Exception:
-                            pass
-            if not events:
-                print(f"  (empty) {ef.name}")
-                continue
-
-            acc = dupes = errs = 0
-            for i in range(0, len(events), 500):
-                batch = events[i:i + 500]
-                payload = json.dumps({"events": batch}).encode()
-                req = urllib.request.Request(
-                    f"{args.api_url}/events/ingest",
-                    data=payload,
-                    headers={"Content-Type": "application/json"},
-                    method="POST",
-                )
-                try:
-                    with urllib.request.urlopen(req, timeout=30) as r:
-                        res = json.loads(r.read())
-                        acc   += res.get("accepted",  0)
-                        dupes += res.get("duplicate", 0)
-                        errs  += res.get("rejected",  0)
-                except Exception as e:
-                    print(f"  ⚠️   Ingest error ({ef.name}): {e}")
-
-            print(f"  ✅  {ef.name}: {acc} accepted, {dupes} dupes, {errs} rejected")
+    grand_total = 0
+    for store_dir in targets:
+        grand_total += process_store(
+            store_dir, dataset, args.device, args.api_url, args.clip_start
+        )
 
     print()
-    print("Next steps:")
-    print("  1. Start API:      docker compose up -d")
-    print(f"  2. Check metrics:  curl http://localhost:8000/stores/{args.store}/metrics")
-    print(f"  3. Dashboard:      python dashboard/live.py --store {args.store}")
-    print()
+    print(f"Done. Total events across stores: {grand_total}")
+    if targets:
+        sid = load_store_layout(targets[0])["store_id"]
+        print(f"  curl http://localhost:8000/stores/{sid}/metrics")
+        print(f"  python dashboard/live.py --store {sid}")
 
 
 if __name__ == "__main__":

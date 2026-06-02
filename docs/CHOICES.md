@@ -116,3 +116,23 @@ I did not add background workers because they would introduce extra orchestratio
 | Storage | SQLite | PostgreSQL | Zero-config docker compose up |
 | API architecture | Synchronous FastAPI ingest | Async workers, streaming pipeline | Simplicity + deterministic request handling |
 | Staff detection | HSV colour (black uniform) | Re-ID embeddings | Uniform colour is known and consistent |
+
+---
+
+## Updated Resource Addendum
+
+After the challenge resources were refreshed, the implementation was changed from a single hardcoded store contract to a compatibility contract.
+
+### Event schema choice
+
+The detector still emits the original uppercase challenge schema because it is explicit and stable for raw video output: `ENTRY`, `EXIT`, `ZONE_ENTER`, `ZONE_EXIT`, `ZONE_DWELL`, `BILLING_QUEUE_JOIN`, `BILLING_QUEUE_ABANDON`, and `REENTRY`. The API now also accepts the updated sample-event schema with lower-case names such as `entry`, `zone_entered`, and `queue_completed`.
+
+AI initially suggested replacing the database schema with event-family-specific tables. I rejected that because it would make the API harder to test and would spread the resource change across every endpoint. I chose a boundary adapter in `app/models.py`: normalize incoming payloads into the existing canonical event record, then keep metrics and funnel logic stable.
+
+### POS parser choice
+
+The updated POS file is line-item based with `order_id`, split `order_date` / `order_time`, and `total_amount`. The loader now supports both this shape and the older `transaction_id,timestamp,basket_value_inr` example. Rows are aggregated by `order_id` before storage so conversion works at purchase level rather than SKU-line level.
+
+### Dataset discovery choice
+
+The store ZIPs use natural filenames rather than fixed `CAM 1.mp4` through `CAM 5.mp4`. The runners now discover clip folders and infer camera roles from filenames when a layout mapping is unavailable. This is intentionally conservative: it lets the pipeline run, but precise zone analytics still require calibrated polygons in `store_layout.json`.

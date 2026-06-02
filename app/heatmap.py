@@ -1,4 +1,3 @@
-from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func, and_, distinct, case
 
@@ -12,12 +11,13 @@ def get_store_heatmap(store_id: str, db: Session) -> HeatmapResponse:
     day_start, day_end = get_day_window(db, store_id)
 
     total_sessions = db.execute(
-        select(func.count(distinct(EventRecord.visitor_id))).where(
+        select(func.count()).where(
             and_(
-                EventRecord.store_id == store_id,
-                EventRecord.is_staff == False,
-                EventRecord.timestamp >= day_start,
-                EventRecord.timestamp < day_end,
+                SessionRecord.store_id == store_id,
+                SessionRecord.is_staff == False,
+                SessionRecord.entry_time.isnot(None),
+                SessionRecord.entry_time >= day_start,
+                SessionRecord.entry_time < day_end,
             )
         )
     ).scalar() or 0
@@ -27,17 +27,20 @@ def get_store_heatmap(store_id: str, db: Session) -> HeatmapResponse:
     rows = db.execute(
         select(
             EventRecord.zone_id,
-            func.count(EventRecord.event_id).label("visit_count"),
+            func.count(distinct(EventRecord.visitor_id)).label("visit_count"),
             func.avg(
                 case(
                     (EventRecord.event_type == "ZONE_DWELL", EventRecord.dwell_ms),
+                    (EventRecord.event_type == "ZONE_EXIT", EventRecord.dwell_ms),
                     else_=None,
                 )
             ).label("avg_dwell"),
         ).where(
             and_(
                 EventRecord.store_id == store_id,
-                EventRecord.event_type.in_(["ZONE_ENTER", "ZONE_DWELL"]),
+                EventRecord.event_type.in_(
+                    ["ZONE_ENTER", "ZONE_DWELL", "ZONE_EXIT", "BILLING_QUEUE_JOIN", "BILLING_QUEUE_ABANDON"]
+                ),
                 EventRecord.is_staff == False,
                 EventRecord.timestamp >= day_start,
                 EventRecord.timestamp < day_end,

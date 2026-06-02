@@ -78,14 +78,15 @@ class POSTransaction(Base):
 
 
 class SessionRecord(Base):
-    """Materialised visitor sessions — rebuilt on ingest for fast funnel queries."""
+    """Materialised visitor sessions — one row per visit (ENTRY through EXIT)."""
     __tablename__ = "sessions"
 
-    session_key     = Column(String, primary_key=True)  # store_id:visitor_id
+    session_key     = Column(String, primary_key=True)  # store_id:visitor_id[:suffix]
     store_id        = Column(String, nullable=False, index=True)
     visitor_id      = Column(String, nullable=False)
     entry_time      = Column(DateTime, nullable=True)
     exit_time       = Column(DateTime, nullable=True)
+    billing_at      = Column(DateTime, nullable=True)
     is_staff        = Column(Boolean, default=False)
     visited_billing = Column(Boolean, default=False)
     converted       = Column(Boolean, default=False)
@@ -93,8 +94,28 @@ class SessionRecord(Base):
     zones_visited   = Column(Text, default="")   # comma-separated zone ids
 
 
+def _ensure_session_columns():
+    """Add columns introduced after first deploy (SQLite has no auto-migrate)."""
+    if not DATABASE_URL.startswith("sqlite"):
+        return
+    import sqlite3
+    path = DATABASE_URL.replace("sqlite:///", "").replace("sqlite:////", "/")
+    if path.startswith("./"):
+        path = path[2:]
+    try:
+        conn = sqlite3.connect(path)
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(sessions)")}
+        if "billing_at" not in cols:
+            conn.execute("ALTER TABLE sessions ADD COLUMN billing_at DATETIME")
+            conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+
 def init_db():
     Base.metadata.create_all(bind=engine)
+    _ensure_session_columns()
 
 
 def get_db():

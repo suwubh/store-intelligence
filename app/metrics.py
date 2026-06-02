@@ -1,57 +1,44 @@
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
-from sqlalchemy import select, func, and_, distinct
+from sqlalchemy import select, func, and_, or_, distinct
 
-from app.database import EventRecord, SessionRecord, POSTransaction, get_day_window
+from app.database import EventRecord, SessionRecord, get_day_window
 from app.models import StoreMetrics, ZoneDwellMetric
+
+
+def _billing_clause():
+    return or_(
+        EventRecord.event_type.in_(["BILLING_QUEUE_JOIN", "BILLING_QUEUE_ABANDON"]),
+        EventRecord.zone_id.in_(["BILLING_COUNTER", "BILLING_QUEUE", "BILLING"]),
+        EventRecord.zone_id.ilike("%BILLING%"),
+        EventRecord.sku_zone.ilike("%BILLING%"),
+    )
 
 
 def get_store_metrics(store_id: str, db: Session) -> StoreMetrics:
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     day_start, day_end = get_day_window(db, store_id)
 
-    # Count unique customer visitor_ids that appear in events during the day window.
+    session_filter = and_(
+        SessionRecord.store_id == store_id,
+        SessionRecord.is_staff == False,
+        SessionRecord.entry_time.isnot(None),
+        SessionRecord.entry_time >= day_start,
+        SessionRecord.entry_time < day_end,
+    )
+
     unique_visitors = db.execute(
-        select(func.count(distinct(EventRecord.visitor_id))).where(
-            and_(
-                EventRecord.store_id == store_id,
-                EventRecord.is_staff == False,
-                EventRecord.timestamp >= day_start,
-                EventRecord.timestamp < day_end,
-            )
+        select(func.count(distinct(SessionRecord.visitor_id))).where(session_filter)
+    ).scalar() or 0
+
+    converted_visitors = db.execute(
+        select(func.count(distinct(SessionRecord.visitor_id))).where(
+            and_(session_filter, SessionRecord.converted == True)
         )
     ).scalar() or 0
 
-    total_sessions = unique_visitors  # one session per unique visitor per day
+    conversion_rate = (converted_visitors / unique_visitors) if unique_visitors > 0 else 0.0
 
-    # Scope converted sessions to visitors active within the day window
-    today_visitor_ids = db.execute(
-        select(distinct(EventRecord.visitor_id)).where(
-            and_(
-                EventRecord.store_id == store_id,
-                EventRecord.is_staff == False,
-                EventRecord.timestamp >= day_start,
-                EventRecord.timestamp < day_end,
-            )
-        )
-    ).scalars().all()
-
-    converted_sessions = 0
-    if today_visitor_ids:
-        converted_sessions = db.execute(
-            select(func.count()).where(
-                and_(
-                    SessionRecord.store_id == store_id,
-                    SessionRecord.is_staff == False,
-                    SessionRecord.converted == True,
-                    SessionRecord.visitor_id.in_(today_visitor_ids),
-                )
-            )
-        ).scalar() or 0
-
-    conversion_rate = (converted_sessions / total_sessions) if total_sessions > 0 else 0.0
-
-    # Avg dwell per zone (uses only ZONE_DWELL events to avoid enter-event bias)
     zone_dwell_rows = db.execute(
         select(
             EventRecord.zone_id,
@@ -60,11 +47,14 @@ def get_store_metrics(store_id: str, db: Session) -> StoreMetrics:
         ).where(
             and_(
                 EventRecord.store_id == store_id,
-                EventRecord.event_type == "ZONE_DWELL",
+                EventRecord.event_type.in_(
+                    ["ZONE_DWELL", "ZONE_EXIT", "BILLING_QUEUE_JOIN", "BILLING_QUEUE_ABANDON"]
+                ),
                 EventRecord.is_staff == False,
                 EventRecord.timestamp >= day_start,
                 EventRecord.timestamp < day_end,
                 EventRecord.zone_id.isnot(None),
+                EventRecord.dwell_ms > 0,
             )
         ).group_by(EventRecord.zone_id)
     ).all()
@@ -78,7 +68,6 @@ def get_store_metrics(store_id: str, db: Session) -> StoreMetrics:
         for row in zone_dwell_rows
     ]
 
-    # Current queue depth (last BILLING_QUEUE_JOIN in past 5 min)
     recent_window = now - timedelta(minutes=5)
     latest_queue = db.execute(
         select(EventRecord.queue_depth).where(
@@ -92,7 +81,6 @@ def get_store_metrics(store_id: str, db: Session) -> StoreMetrics:
     ).scalar()
     current_queue_depth = latest_queue or 0
 
-    # Abandonment rate
     billing_visitors = db.execute(
         select(func.count(distinct(EventRecord.visitor_id))).where(
             and_(
@@ -100,8 +88,7 @@ def get_store_metrics(store_id: str, db: Session) -> StoreMetrics:
                 EventRecord.is_staff == False,
                 EventRecord.timestamp >= day_start,
                 EventRecord.timestamp < day_end,
-                EventRecord.event_type.in_(["BILLING_QUEUE_JOIN", "ZONE_ENTER"]),
-                EventRecord.zone_id.in_(["BILLING_COUNTER", "BILLING_QUEUE", "BILLING"]),
+                _billing_clause(),
             )
         )
     ).scalar() or 0

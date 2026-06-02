@@ -1,21 +1,27 @@
+import csv
 import logging
+import os
 from datetime import datetime, timedelta
-from sqlalchemy.orm import Session
-from sqlalchemy import select, and_
-from pydantic import ValidationError
 
-from app.models import StoreEvent, IngestRequest, IngestResponse
-from app.database import EventRecord, SessionRecord, POSTransaction
+from pydantic import ValidationError
+from sqlalchemy import and_, select
+from sqlalchemy.orm import Session
+
+from app.database import EventRecord, POSTransaction, SessionRecord
+from app.models import IngestRequest, IngestResponse, StoreEvent
 
 logger = logging.getLogger(__name__)
 
 BILLING_ZONES = {"BILLING", "BILLING_COUNTER", "BILLING_QUEUE", "CHECKOUT", "CASHIER"}
-# A visitor at billing UP TO 5 min BEFORE a transaction = converted
 CONVERSION_WINDOW_SECONDS = 300
+POS_TIMEZONE_OFFSET = timedelta(minutes=int(os.getenv("POS_TIMEZONE_OFFSET_MINUTES", "0")))
 
-# POS transactions in the CSV use Indian Standard Time (IST, UTC+5:30).
-# Subtraction of 5h30m converts IST to UTC-naive datetimes to align with pipeline event timestamps.
-IST_TO_UTC_OFFSET = timedelta(hours=5, minutes=30)
+# Updated sample_events.jsonl: track_id → id_token (verified from resource file)
+SAMPLE_TRACK_ALIASES = {
+    101: "ID_60001",
+    102: "ID_60002",
+    103: "ID_60003",
+}
 
 
 def ingest_events(request: IngestRequest, db: Session) -> IngestResponse:
@@ -23,16 +29,26 @@ def ingest_events(request: IngestRequest, db: Session) -> IngestResponse:
     rejected = 0
     duplicate = 0
     errors = []
-    seen_sessions: dict = {}  # in-memory cache for this batch — prevents duplicate inserts
+    seen_sessions: dict[str, SessionRecord] = {}
+    track_aliases = dict(SAMPLE_TRACK_ALIASES)
+
+    # First pass: learn id_token ↔ track_id links from the same batch
+    for raw in request.events:
+        if not isinstance(raw, dict):
+            continue
+        token = raw.get("id_token") or raw.get("visitor_id")
+        track_id = raw.get("track_id")
+        if token and track_id is not None:
+            track_aliases[int(track_id)] = str(token)
 
     for idx, raw in enumerate(request.events):
         try:
-            event = StoreEvent(**raw) if isinstance(raw, dict) else raw
+            event = _parse_event(raw, track_aliases)
         except (ValidationError, Exception) as e:
             rejected += 1
             errors.append({
                 "index": idx,
-                "event_id": raw.get("event_id", "unknown") if isinstance(raw, dict) else "unknown",
+                "event_id": raw.get("event_id", raw.get("queue_event_id", "unknown")) if isinstance(raw, dict) else "unknown",
                 "error": str(e),
             })
             continue
@@ -43,24 +59,34 @@ def ingest_events(request: IngestRequest, db: Session) -> IngestResponse:
                 duplicate += 1
                 continue
 
-            record = _event_to_record(event)
-            db.add(record)
-            _upsert_session(event, db, seen_sessions)
+            db.add(_event_to_record(event))
+            session = _upsert_session(event, db, seen_sessions)
+            if session and session.visited_billing:
+                _try_mark_converted(session, db)
             accepted += 1
-
         except Exception as e:
             rejected += 1
             errors.append({"index": idx, "event_id": event.event_id, "error": str(e)})
-            logger.warning(f"Rejected event {event.event_id}: {e}")
+            logger.warning("Rejected event %s: %s", event.event_id, e)
 
     try:
         db.commit()
     except Exception as e:
         db.rollback()
-        logger.error(f"Commit failed: {e}")
+        logger.error("Commit failed: %s", e)
         raise
 
     return IngestResponse(accepted=accepted, rejected=rejected, duplicate=duplicate, errors=errors)
+
+
+def _parse_event(raw: dict, track_aliases: dict[int, str]) -> StoreEvent:
+    data = dict(raw)
+    track_id = data.get("track_id")
+    if track_id is not None and not data.get("visitor_id") and not data.get("id_token"):
+        alias = track_aliases.get(int(track_id))
+        if alias:
+            data["visitor_id"] = alias
+    return StoreEvent(**data)
 
 
 def _event_to_record(event: StoreEvent) -> EventRecord:
@@ -81,144 +107,238 @@ def _event_to_record(event: StoreEvent) -> EventRecord:
     )
 
 
-def _upsert_session(event: StoreEvent, db: Session, seen_sessions: dict):
-    session_key = f"{event.store_id}:{event.visitor_id}"
+def _resolve_session_key(
+    event: StoreEvent,
+    db: Session,
+    seen_sessions: dict[str, SessionRecord],
+) -> str:
+    """One session per visit; new key after EXIT when a new ENTRY/REENTRY arrives."""
+    base = f"{event.store_id}:{event.visitor_id}"
+    if event.event_type.value not in ("ENTRY", "REENTRY"):
+        for key, session in seen_sessions.items():
+            if session.visitor_id == event.visitor_id and session.store_id == event.store_id:
+                if session.exit_time is None:
+                    return key
+        active = db.execute(
+            select(SessionRecord).where(
+                and_(
+                    SessionRecord.store_id == event.store_id,
+                    SessionRecord.visitor_id == event.visitor_id,
+                    SessionRecord.exit_time.is_(None),
+                )
+            ).order_by(SessionRecord.entry_time.desc())
+        ).scalars().first()
+        if active:
+            return active.session_key
+        return base
 
-    # Check in-memory cache first — prevents duplicate inserts within same batch
-    if session_key in seen_sessions:
-        session = seen_sessions[session_key]
-    else:
-        session = db.get(SessionRecord, session_key)
-        if not session:
-            session = SessionRecord(
-                session_key=session_key,
-                store_id=event.store_id,
-                visitor_id=event.visitor_id,
-                is_staff=event.is_staff,
+    # ENTRY / REENTRY — start new visit if previous visit closed
+    candidate_keys = [k for k in seen_sessions if k.startswith(base)]
+    for key in sorted(candidate_keys, reverse=True):
+        session = seen_sessions[key]
+        if session.exit_time is None:
+            if event.event_type.value == "REENTRY":
+                return key
+            return key
+
+    existing = db.execute(
+        select(SessionRecord).where(
+            and_(
+                SessionRecord.store_id == event.store_id,
+                SessionRecord.visitor_id == event.visitor_id,
             )
-            db.add(session)
-            db.flush()  # write to DB so subsequent db.get() calls see it
-        seen_sessions[session_key] = session
+        ).order_by(SessionRecord.entry_time.desc())
+    ).scalars().all()
+
+    if existing:
+        latest = existing[0]
+        if latest.exit_time is None:
+            return latest.session_key
+        suffix = latest.reentry_count + 1 if event.event_type.value == "REENTRY" else len(existing)
+        return f"{base}:v{suffix}"
+
+    return base
+
+
+def _upsert_session(
+    event: StoreEvent,
+    db: Session,
+    seen_sessions: dict[str, SessionRecord],
+) -> SessionRecord | None:
+    session_key = _resolve_session_key(event, db, seen_sessions)
+    session = seen_sessions.get(session_key)
+    if not session:
+        session = db.get(SessionRecord, session_key)
+    if not session:
+        session = SessionRecord(
+            session_key=session_key,
+            store_id=event.store_id,
+            visitor_id=event.visitor_id,
+            is_staff=event.is_staff,
+        )
+        db.add(session)
+        db.flush()
+
+    seen_sessions[session_key] = session
+    session.is_staff = session.is_staff or event.is_staff
 
     etype = event.event_type.value
-
     if etype == "ENTRY":
-        if session.entry_time is None:
+        if session.entry_time is None or session.exit_time is not None:
             session.entry_time = event.timestamp
+            session.exit_time = None
     elif etype == "EXIT":
         session.exit_time = event.timestamp
     elif etype == "REENTRY":
         session.reentry_count = (session.reentry_count or 0) + 1
-        session.entry_time = event.timestamp  # reset session window for conversion
+        session.entry_time = event.timestamp
+        session.exit_time = None
     elif etype in ("ZONE_ENTER", "ZONE_DWELL", "ZONE_EXIT"):
-        if event.zone_id:
-            zones = set(session.zones_visited.split(",")) if session.zones_visited else set()
-            zones.discard("")
-            zones.add(event.zone_id)
-            session.zones_visited = ",".join(zones)
+        _add_session_zone(session, event.zone_id)
 
-    # Mark billing visit
-    if event.zone_id and event.zone_id.upper() in BILLING_ZONES:
+    if _is_billing_signal(event):
         session.visited_billing = True
-    if etype in ("BILLING_QUEUE_JOIN", "BILLING_QUEUE_ABANDON"):
-        session.visited_billing = True
+        session.billing_at = session.billing_at or event.timestamp
+        _add_session_zone(session, event.zone_id)
 
-    # Check conversion: was there a POS txn within 5 min AFTER this visitor
-    # was at the billing zone? (visitor bills → transaction fires shortly after)
-    if session.visited_billing and not session.converted:
-        session.converted = _check_conversion(event.store_id, event.timestamp, db)
+    return session
 
 
-def _check_conversion(store_id: str, ref_time: datetime, db: Session) -> bool:
+def _add_session_zone(session: SessionRecord, zone_id: str | None):
+    if not zone_id:
+        return
+    zones = set(session.zones_visited.split(",")) if session.zones_visited else set()
+    zones.discard("")
+    zones.add(zone_id)
+    session.zones_visited = ",".join(sorted(zones))
+
+
+def _is_billing_signal(event: StoreEvent) -> bool:
+    if event.event_type.value in ("BILLING_QUEUE_JOIN", "BILLING_QUEUE_ABANDON"):
+        return True
+
+    candidates = [event.zone_id or "", event.metadata.sku_zone or ""]
+    return any(
+        candidate.upper() in BILLING_ZONES or "BILLING" in candidate.upper()
+        for candidate in candidates
+    )
+
+
+def _try_mark_converted(session: SessionRecord, db: Session) -> bool:
     """
-    Return True if a POS transaction exists in the 5-minute window AFTER ref_time.
-    The visitor hits billing → transaction happens within 5 min → converted.
-    Also check 2 min before (cashier may have started ringing before we detect billing visit).
+    Challenge rule: billing visit in the 5-minute window before a POS transaction.
+    If billing_at = B, a transaction at T converts when B <= T <= B + 5 minutes.
     """
-    window_start = ref_time - timedelta(seconds=120)   # 2 min buffer before
-    window_end   = ref_time + timedelta(seconds=CONVERSION_WINDOW_SECONDS)
+    if session.converted or not session.visited_billing or not session.billing_at:
+        return False
 
+    window_end = session.billing_at + timedelta(seconds=CONVERSION_WINDOW_SECONDS)
     result = db.execute(
         select(POSTransaction).where(
             and_(
-                POSTransaction.store_id == store_id,
-                POSTransaction.timestamp >= window_start,
+                POSTransaction.store_id == session.store_id,
+                POSTransaction.timestamp >= session.billing_at,
                 POSTransaction.timestamp <= window_end,
             )
         )
     ).first()
-    return result is not None
+    if result:
+        session.converted = True
+        return True
+    return False
+
+
+def attribute_conversions_for_store(store_id: str, db: Session) -> int:
+    """Re-run POS correlation for all open sessions (e.g. after POS CSV load)."""
+    sessions = db.execute(
+        select(SessionRecord).where(
+            and_(
+                SessionRecord.store_id == store_id,
+                SessionRecord.visited_billing == True,
+                SessionRecord.converted == False,
+                SessionRecord.is_staff == False,
+            )
+        )
+    ).scalars().all()
+    marked = 0
+    for session in sessions:
+        if _try_mark_converted(session, db):
+            marked += 1
+    if marked:
+        db.commit()
+    return marked
 
 
 def load_pos_transactions(csv_path: str, db: Session):
     """
-    Load POS CSV into DB.
-    Handles the real Purplle 39-col format:
-      order_date (DD-MM-YYYY), order_time (HH:MM:SS), invoice_number, store_id, total_amount
-
-    # POS timestamps are in IST. Subtracting the 5h30m offset aligns them with UTC-naive
-    # pipeline event timestamps for correct conversion window matching.
+    Load either challenge POS shape:
+    - transaction_id,timestamp,basket_value_inr
+    - order_id,order_date,order_time,store_id,product_id,brand_name,total_amount
     """
-    import csv
-
     loaded = 0
+    stores_touched: set[str] = set()
     with open(csv_path, newline="", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         cols = reader.fieldnames or []
-        is_purplle = "invoice_number" in cols and "order_date" in cols
-        invoices: dict = {}
+        has_split_time = "order_date" in cols and "order_time" in cols
+        order_id_col = "invoice_number" if "invoice_number" in cols else "order_id" if "order_id" in cols else None
+        orders: dict[str, dict] = {}
 
         for row in reader:
             try:
-                if is_purplle:
-                    inv_id = row["invoice_number"].strip()
-                    if not inv_id or inv_id == "nan":
+                if has_split_time and order_id_col:
+                    tx_id = row[order_id_col].strip()
+                    if not tx_id or tx_id.lower() == "nan":
                         continue
-                    if inv_id not in invoices:
-                        # Parse DD-MM-YYYY HH:MM:SS as IST wall clock, then convert to UTC-naive
-                        dt_ist = datetime.strptime(
+                    if tx_id not in orders:
+                        parsed = datetime.strptime(
                             f"{row['order_date'].strip()} {row['order_time'].strip()}",
                             "%d-%m-%Y %H:%M:%S",
                         )
-                        # FIX (Issue N1): subtract 5h30m to convert IST → UTC
-                        dt_utc = dt_ist - IST_TO_UTC_OFFSET
-                        invoices[inv_id] = {
-                            "store_id": row["store_id"].strip(),
-                            "timestamp": dt_utc,
+                        store_id = row["store_id"].strip()
+                        orders[tx_id] = {
+                            "store_id": store_id,
+                            "timestamp": parsed - POS_TIMEZONE_OFFSET,
                             "basket_value": 0.0,
                         }
-                    try:
-                        invoices[inv_id]["basket_value"] += float(row.get("total_amount", 0) or 0)
-                    except (ValueError, TypeError):
-                        pass
+                        stores_touched.add(store_id)
+                    orders[tx_id]["basket_value"] += _float_or_zero(row.get("total_amount"))
                 else:
                     tx_id = row.get("transaction_id", row.get("invoice_number", "")).strip()
-                    if not tx_id:
+                    if not tx_id or db.get(POSTransaction, tx_id):
                         continue
-                    if db.get(POSTransaction, tx_id):
-                        continue
-                    dt = datetime.fromisoformat(row.get("timestamp", "").strip().replace("Z", "+00:00"))
+                    timestamp = datetime.fromisoformat(row.get("timestamp", "").strip().replace("Z", "+00:00"))
+                    store_id = row["store_id"].strip()
                     db.add(POSTransaction(
                         transaction_id=tx_id,
-                        store_id=row["store_id"].strip(),
-                        timestamp=dt,
-                        basket_value=float(row.get("basket_value_inr", 0)),
+                        store_id=store_id,
+                        timestamp=timestamp,
+                        basket_value=_float_or_zero(row.get("basket_value_inr")),
                     ))
+                    stores_touched.add(store_id)
                     loaded += 1
             except Exception as e:
-                logger.warning(f"Skipping POS row: {e}")
+                logger.warning("Skipping POS row: %s", e)
 
-        if is_purplle:
-            for inv_id, data in invoices.items():
-                if db.get(POSTransaction, inv_id):
-                    continue
-                db.add(POSTransaction(
-                    transaction_id=inv_id,
-                    store_id=data["store_id"],
-                    timestamp=data["timestamp"],
-                    basket_value=data["basket_value"],
-                ))
-                loaded += 1
+        for tx_id, data in orders.items():
+            if db.get(POSTransaction, tx_id):
+                continue
+            db.add(POSTransaction(
+                transaction_id=tx_id,
+                store_id=data["store_id"],
+                timestamp=data["timestamp"],
+                basket_value=data["basket_value"],
+            ))
+            loaded += 1
 
     db.commit()
-    logger.info(f"POS transactions loaded: {loaded}")
+    for store_id in stores_touched:
+        attribute_conversions_for_store(store_id, db)
+    logger.info("POS transactions loaded: %s", loaded)
+
+
+def _float_or_zero(value) -> float:
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0

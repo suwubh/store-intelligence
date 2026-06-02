@@ -3,6 +3,8 @@
 
 import pytest
 from datetime import datetime, timedelta, timezone
+from app.database import POSTransaction
+from app.ingestion import load_pos_transactions
 
 
 class TestIngest:
@@ -43,6 +45,89 @@ class TestIngest:
         r = ingest_helper(client, [])
         assert r.status_code == 200
         assert r.json()["accepted"] == 0
+
+    def test_updated_sample_entry_schema_ingests_and_dedupes(self, client, ingest_helper):
+        event = {
+            "event_type": "entry",
+            "id_token": "ID_60001",
+            "store_code": "store_1076",
+            "camera_id": "cam1",
+            "event_timestamp": "2026-03-08T18:10:05.120000",
+            "is_staff": False,
+            "gender_pred": "F",
+            "age_pred": 28,
+            "age_bucket": "25-34",
+            "is_face_hidden": False,
+            "group_id": None,
+            "group_size": None,
+        }
+
+        first = ingest_helper(client, [event])
+        assert first.status_code == 200
+        assert first.json()["accepted"] == 1
+
+        second = ingest_helper(client, [event])
+        assert second.status_code == 200
+        assert second.json()["duplicate"] == 1
+
+        metrics = client.get("/stores/ST1076/metrics")
+        assert metrics.status_code == 200
+        assert metrics.json()["unique_visitors"] >= 1
+
+    def test_sample_track_ids_link_to_entry_tokens(self, client, ingest_helper):
+        """Full sample file: track_id rows must not inflate visitor count vs id_tokens."""
+        from pathlib import Path
+        import json
+
+        path = Path("dataset/events/sample_events.jsonl")
+        events = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+        r = ingest_helper(client, events)
+        assert r.status_code == 200
+        assert r.json()["accepted"] == len(events)
+
+        funnel = client.get("/stores/ST1076/funnel").json()
+        assert funnel["stages"][0]["count"] == 3
+
+    def test_updated_queue_schema_counts_billing_stage(self, client, ingest_helper):
+        event = {
+            "queue_event_id": "cfd8e3c5-7aa0-4ea3-9b59-692d50da8308",
+            "event_type": "queue_completed",
+            "track_id": 102,
+            "store_id": "ST1076",
+            "camera_id": "PURPLLE_MUM_1076_CAM6",
+            "zone_id": "PURPLLE_MUM_1076_Z_BILLING_01",
+            "zone_name": "Billing Counter Queue",
+            "zone_type": "BILLING",
+            "is_revenue_zone": "Yes",
+            "queue_join_ts": "2026-03-08T18:13:05.080000",
+            "queue_served_ts": "2026-03-08T18:13:13.240000",
+            "queue_exit_ts": "2026-03-08T18:15:31.840000",
+            "wait_seconds": 8,
+            "queue_position_at_join": 2,
+            "abandoned": False,
+        }
+
+        r = ingest_helper(client, [event])
+        assert r.status_code == 200
+        assert r.json()["accepted"] == 1
+
+        funnel = client.get("/stores/ST1076/funnel").json()
+        billing = next(stage for stage in funnel["stages"] if stage["stage"] == "Billing Queue")
+        assert billing["count"] == 1
+
+    def test_updated_pos_order_file_loads(self, tmp_path, db_session):
+        pos_file = tmp_path / "pos.csv"
+        pos_file.write_text(
+            "order_id,order_date,order_time,store_id,product_id,brand_name,total_amount\n"
+            "ORD1,10-04-2026,12:15:05,ST1008,399945,Faces Canada,302.33\n"
+            "ORD1,10-04-2026,12:15:05,ST1008,353621,Faces Canada,491.77\n",
+            encoding="utf-8",
+        )
+
+        load_pos_transactions(str(pos_file), db_session)
+        txn = db_session.get(POSTransaction, "ORD1")
+        assert txn is not None
+        assert round(txn.basket_value, 2) == 794.10
 
 
 class TestHealth:

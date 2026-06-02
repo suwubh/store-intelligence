@@ -463,8 +463,9 @@
         <span id="uptime-label">connecting…</span>
       </div>
       <select class="store-select" id="store-select" onchange="changeStore()">
-        <option value="ST1008">ST1008 · Brigade BLR</option>
-        <option value="STORE_BLR_002">STORE_BLR_002</option>
+        <option value="ST_STORE_1">ST_STORE_1 · Store 1</option>
+        <option value="ST_STORE_2">ST_STORE_2 · Store 2</option>
+        <option value="ST1076">ST1076 · Sample events</option>
       </select>
     </div>
   </header>
@@ -557,7 +558,7 @@
 
 <script>
   // ── State ──
-  let activeStore = 'ST1008';
+  let activeStore = 'ST_STORE_1';
   let funnelChart = null;
 
   // ── Clock ──

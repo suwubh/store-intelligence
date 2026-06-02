@@ -22,9 +22,15 @@ class ZoneMapper:
         if not path.exists():
             logger.warning(f"store_layout.json not found at {path}. Zone mapping disabled.")
             return
+        if path.suffix.lower() != ".json":
+            logger.warning(f"Layout asset {path} is not JSON. Zone mapping disabled until polygons are calibrated.")
+            return
 
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             layout = json.load(f)
+
+        if layout.get("store_id"):
+            store_id = layout["store_id"]
 
         # Handle multiple layout structures:
         # Format A (our generated layout): { "store_id": "ST1008", "cameras": { "CAM_ENTRY_01": { "zones": [...] } } }

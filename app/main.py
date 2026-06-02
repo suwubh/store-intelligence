@@ -145,7 +145,7 @@ def ingest(
     """
     result = ingest_events(request_body, db)
     first = request_body.events[0] if request_body.events else {}
-    store_id_log = first.get("store_id", "-") if isinstance(first, dict) else getattr(first, "store_id", "-")
+    store_id_log = first.get("store_id", first.get("store_code", "-")) if isinstance(first, dict) else getattr(first, "store_id", "-")
     logger.info(
         "ingest_complete",
         extra={
@@ -214,4 +214,3 @@ def dashboard_ui():
         with open(template_path, "r", encoding="utf-8") as f:
             return f.read()
     return "<h3>Web Dashboard HTML file not found at app/templates/dashboard.html</h3>"
-
