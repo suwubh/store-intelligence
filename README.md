@@ -29,13 +29,28 @@ python pipeline/validate_dataset.py --dataset dataset
 # 3. Start the API
 docker compose up --build
 
-# 4. Ingest updated sample events (ST1076 demo schema)
+# 4. Ingest pre-generated pipeline events (ST1008 — Store 1 clips)
+#    This step is required for metrics/funnel/heatmap to show real data.
+#    Run from the project root after "docker compose up":
+python -c "
+import json, urllib.request, pathlib
+for p in sorted(pathlib.Path('dataset/events').glob('ST1008_*.jsonl')):
+    events = [json.loads(l) for l in p.read_text().splitlines() if l.strip()]
+    if not events: continue
+    body = json.dumps({'events': events}).encode()
+    req = urllib.request.Request('http://localhost:8000/events/ingest', body, {'Content-Type':'application/json'}, method='POST')
+    print(p.name, urllib.request.urlopen(req).read().decode())
+"
+
+# 5. Ingest updated sample events (ST1076 demo schema)
 python -c "import json, urllib.request; events=[json.loads(l) for l in open('dataset/events/sample_events.jsonl') if l.strip()]; req=urllib.request.Request('http://localhost:8000/events/ingest', json.dumps({'events': events}).encode(), {'Content-Type':'application/json'}, method='POST'); print(urllib.request.urlopen(req).read().decode())"
 
-# 5. Query metrics
-curl http://localhost:8000/stores/ST1076/metrics
+# 6. Query metrics
+curl http://localhost:8000/stores/ST1008/metrics
 curl http://localhost:8000/stores/ST1076/funnel
 ```
+
+> **Note on health status:** The `/health` endpoint reports `"degraded"` when the latest event timestamp is more than 10 minutes old. Since the pre-generated events in `dataset/events/` are from April 2026, the feed will show as stale after a fresh ingest. This is correct behaviour — the system is designed for real-time clips. Re-run the pipeline against live clips (`run_pipeline.py`) to get a live feed. The `last_event_timestamp` field in the health response shows when data was recorded; `event_count_last_hour` shows recent API activity.
 
 ## Raw Clip Processing
 

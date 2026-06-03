@@ -21,7 +21,7 @@ from rich import box
 
 def parse_args():
     p = argparse.ArgumentParser()
-    p.add_argument("--store", default="ST_STORE_1", help="Store ID to monitor")
+    p.add_argument("--store", default="ST1008", help="Store ID to monitor")
     p.add_argument("--api", default="http://localhost:8000", help="API base URL")
     p.add_argument("--interval", type=float, default=3.0, help="Refresh interval in seconds")
     return p.parse_args()

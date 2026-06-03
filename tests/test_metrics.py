@@ -28,6 +28,43 @@ class TestMetrics:
         assert r.status_code == 200
         assert r.json()["conversion_rate"] == 0.0
 
+    def test_conversion_rate_with_matching_pos(self, client, make_event_helper, ingest_helper, db_session):
+        """Visitor who hits billing and has a POS transaction in the 5-minute window must be converted."""
+        from app.database import POSTransaction
+        from app.ingestion import attribute_conversions_for_store
+        from datetime import timedelta
+
+        ts = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+        vis = f"VIS_{uuid.uuid4().hex[:6]}"
+
+        # Visitor enters then joins billing queue
+        ingest_helper(client, [
+            make_event_helper(event_type="ENTRY", visitor_id=vis,
+                              camera_id="CAM_ENTRY_01", timestamp=ts),
+            make_event_helper(event_type="BILLING_QUEUE_JOIN", visitor_id=vis,
+                              camera_id="CAM_BILLING_01", zone_id="BILLING",
+                              queue_depth=1,
+                              timestamp=ts + timedelta(minutes=2)),
+        ])
+
+        # POS transaction 3 minutes after billing visit (within the 5-minute window)
+        db_session.add(POSTransaction(
+            transaction_id=f"TXN_TEST_{uuid.uuid4().hex[:8]}",
+            store_id="ST1008",
+            timestamp=(ts + timedelta(minutes=3)).replace(tzinfo=None),
+            basket_value=500.0,
+        ))
+        db_session.commit()
+
+        # Re-run POS correlation for the store
+        attribute_conversions_for_store("ST1008", db_session)
+
+        r = client.get("/stores/ST1008/metrics")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["unique_visitors"] >= 1
+        assert data["conversion_rate"] > 0.0
+
     def test_queue_depth_from_latest_event(self, client, make_event_helper, ingest_helper):
         vis = f"VIS_{uuid.uuid4().hex[:6]}"
         ingest_helper(client, [

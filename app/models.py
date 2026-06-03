@@ -229,6 +229,7 @@ class StoreHealthStatus(BaseModel):
     last_event_timestamp: Optional[datetime]
     stale_feed: bool
     event_count_last_hour: int
+    last_ingest_at: Optional[datetime] = None  # Wall-clock time of most recent ingest (not event time)
 
 
 class HealthResponse(BaseModel):

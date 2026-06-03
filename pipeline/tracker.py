@@ -69,6 +69,7 @@ class MultiObjectTracker:
         frame: np.ndarray,
         timestamp: datetime,
         entry_line_ratio: float = ENTRY_LINE_RATIO,
+        entry_inward_direction: str = "down",
     ) -> list[dict]:
         frame_h, frame_w = frame.shape[:2]
 
@@ -96,9 +97,22 @@ class MultiObjectTracker:
             # Only entry cameras perform line-crossing logic
             if entry_line_y is not None:
                 if state.last_y is not None:
-                    if state.last_y > entry_line_y >= cy:
-                        state.direction = "OUTWARD"
-                        state.just_crossed = True
+                    if entry_inward_direction == "down":
+                        # Camera faces outward, exterior at top — entering moves y downward
+                        if state.last_y < entry_line_y <= cy:
+                            state.direction = "INWARD"
+                            state.just_crossed = True
+                        elif state.last_y > entry_line_y >= cy:
+                            state.direction = "OUTWARD"
+                            state.just_crossed = True
+                    else:  # "up"
+                        # Camera angled inside-right — entering moves y upward
+                        if state.last_y > entry_line_y >= cy:
+                            state.direction = "INWARD"
+                            state.just_crossed = True
+                        elif state.last_y < entry_line_y <= cy:
+                            state.direction = "OUTWARD"
+                            state.just_crossed = True
 
             state.last_y = cy
 
@@ -333,7 +347,11 @@ class MultiObjectTracker:
         for vid, count in self._lost_counters.items():
             if count > self.max_lost_frames:
                 if vid in self.tracks:
-                    self.exited_tracks.append(self.tracks[vid])
+                    track = self.tracks[vid]
+                    # Signal that this track needs a synthetic ZONE_EXIT before pruning
+                    # Callers can check exited_tracks[-1].prev_zone after calling _prune_lost
+                    track._needs_zone_exit = True
+                    self.exited_tracks.append(track)
                     self.exited_tracks = self.exited_tracks[-50:]
                 to_remove.append(vid)
 

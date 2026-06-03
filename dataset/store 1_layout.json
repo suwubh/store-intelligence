@@ -18,7 +18,7 @@
   },
   "cameras": {
     "CAM_FLOOR_01": {
-      "description": "FLOOR \u2014 CAM 1 - zone.mp4",
+      "description": "FLOOR — CAM 1 - zone.mp4 (face-on shelf view: Face Shop / Good Vibes / Derma.co / Minimalist / Aqualogica / consultation desk)",
       "source_file": "CAM 1 - zone.mp4",
       "coverage": "floor",
       "resolution": {
@@ -30,177 +30,34 @@
       "entry_line_y_ratio": null,
       "zones": [
         {
-          "zone_id": "FLOOR_1_01",
-          "polygon": [
-            [
-              0,
-              0
-            ],
-            [
-              480,
-              0
-            ],
-            [
-              480,
-              540
-            ],
-            [
-              0,
-              540
-            ]
-          ]
+          "zone_id": "FARMSTAY_FACESHOP",
+          "label": "FarmStay / The Face Shop",
+          "polygon": [[0, 0], [480, 0], [480, 900], [0, 900]]
         },
         {
-          "zone_id": "FLOOR_1_02",
-          "polygon": [
-            [
-              480,
-              0
-            ],
-            [
-              960,
-              0
-            ],
-            [
-              960,
-              540
-            ],
-            [
-              480,
-              540
-            ]
-          ]
+          "zone_id": "GOOD_VIBES_DERMA",
+          "label": "Good Vibes / Derma.co",
+          "polygon": [[480, 0], [960, 0], [960, 900], [480, 900]]
         },
         {
-          "zone_id": "FLOOR_1_03",
-          "polygon": [
-            [
-              960,
-              0
-            ],
-            [
-              1440,
-              0
-            ],
-            [
-              1440,
-              540
-            ],
-            [
-              960,
-              540
-            ]
-          ]
+          "zone_id": "MINIMALIST_AQUALOGICA",
+          "label": "Minimalist / Aqualogica / Clean Beauty",
+          "polygon": [[960, 0], [1440, 0], [1440, 900], [960, 900]]
         },
         {
-          "zone_id": "FLOOR_1_04",
-          "polygon": [
-            [
-              1440,
-              0
-            ],
-            [
-              1920,
-              0
-            ],
-            [
-              1920,
-              540
-            ],
-            [
-              1440,
-              540
-            ]
-          ]
+          "zone_id": "CONSULTATION_DESK",
+          "label": "Consultation / Try-On Desk (right side)",
+          "polygon": [[1440, 0], [1920, 0], [1920, 900], [1440, 900]]
         },
         {
-          "zone_id": "FLOOR_1_05",
-          "polygon": [
-            [
-              0,
-              540
-            ],
-            [
-              480,
-              540
-            ],
-            [
-              480,
-              1080
-            ],
-            [
-              0,
-              1080
-            ]
-          ]
-        },
-        {
-          "zone_id": "FLOOR_1_06",
-          "polygon": [
-            [
-              480,
-              540
-            ],
-            [
-              960,
-              540
-            ],
-            [
-              960,
-              1080
-            ],
-            [
-              480,
-              1080
-            ]
-          ]
-        },
-        {
-          "zone_id": "FLOOR_1_07",
-          "polygon": [
-            [
-              960,
-              540
-            ],
-            [
-              1440,
-              540
-            ],
-            [
-              1440,
-              1080
-            ],
-            [
-              960,
-              1080
-            ]
-          ]
-        },
-        {
-          "zone_id": "FLOOR_1_08",
-          "polygon": [
-            [
-              1440,
-              540
-            ],
-            [
-              1920,
-              540
-            ],
-            [
-              1920,
-              1080
-            ],
-            [
-              1440,
-              1080
-            ]
-          ]
+          "zone_id": "FLOOR_ISLAND_CAM1",
+          "label": "Central Floor Island / Summer Display",
+          "polygon": [[480, 500], [1440, 500], [1440, 1080], [480, 1080]]
         }
       ]
     },
     "CAM_FLOOR_02": {
-      "description": "FLOOR \u2014 CAM 2 - zone.mp4",
+      "description": "FLOOR — CAM 2 - zone.mp4 (wide aisle view: Accessories / Alps / L'Oreal / Lakme / Faces Canada / Maybelline / central island)",
       "source_file": "CAM 2 - zone.mp4",
       "coverage": "floor",
       "resolution": {
@@ -212,177 +69,44 @@
       "entry_line_y_ratio": null,
       "zones": [
         {
-          "zone_id": "FLOOR_2_01",
-          "polygon": [
-            [
-              0,
-              0
-            ],
-            [
-              480,
-              0
-            ],
-            [
-              480,
-              540
-            ],
-            [
-              0,
-              540
-            ]
-          ]
+          "zone_id": "ACCESSORIES_ALPS",
+          "label": "Accessories / Alps Goodness",
+          "polygon": [[0, 0], [320, 0], [320, 750], [0, 750]]
         },
         {
-          "zone_id": "FLOOR_2_02",
-          "polygon": [
-            [
-              480,
-              0
-            ],
-            [
-              960,
-              0
-            ],
-            [
-              960,
-              540
-            ],
-            [
-              480,
-              540
-            ]
-          ]
+          "zone_id": "LOREAL_MARS",
+          "label": "L'Oreal / 6Mars / Swiss Beauty",
+          "polygon": [[320, 0], [640, 0], [640, 750], [320, 750]]
         },
         {
-          "zone_id": "FLOOR_2_03",
-          "polygon": [
-            [
-              960,
-              0
-            ],
-            [
-              1440,
-              0
-            ],
-            [
-              1440,
-              540
-            ],
-            [
-              960,
-              540
-            ]
-          ]
+          "zone_id": "LAKME",
+          "label": "Lakme / Lips & Eyes",
+          "polygon": [[640, 0], [960, 0], [960, 750], [640, 750]]
         },
         {
-          "zone_id": "FLOOR_2_04",
-          "polygon": [
-            [
-              1440,
-              0
-            ],
-            [
-              1920,
-              0
-            ],
-            [
-              1920,
-              540
-            ],
-            [
-              1440,
-              540
-            ]
-          ]
+          "zone_id": "FACES_CANADA",
+          "label": "Faces Canada",
+          "polygon": [[960, 0], [1280, 0], [1280, 750], [960, 750]]
         },
         {
-          "zone_id": "FLOOR_2_05",
-          "polygon": [
-            [
-              0,
-              540
-            ],
-            [
-              480,
-              540
-            ],
-            [
-              480,
-              1080
-            ],
-            [
-              0,
-              1080
-            ]
-          ]
+          "zone_id": "MAYBELLINE",
+          "label": "Maybelline New York",
+          "polygon": [[1280, 0], [1600, 0], [1600, 750], [1280, 750]]
         },
         {
-          "zone_id": "FLOOR_2_06",
-          "polygon": [
-            [
-              480,
-              540
-            ],
-            [
-              960,
-              540
-            ],
-            [
-              960,
-              1080
-            ],
-            [
-              480,
-              1080
-            ]
-          ]
+          "zone_id": "FACE_ZONE_RIGHT",
+          "label": "Face / Sun Protection (far right shelf)",
+          "polygon": [[1600, 0], [1920, 0], [1920, 750], [1600, 750]]
         },
         {
-          "zone_id": "FLOOR_2_07",
-          "polygon": [
-            [
-              960,
-              540
-            ],
-            [
-              1440,
-              540
-            ],
-            [
-              1440,
-              1080
-            ],
-            [
-              960,
-              1080
-            ]
-          ]
-        },
-        {
-          "zone_id": "FLOOR_2_08",
-          "polygon": [
-            [
-              1440,
-              540
-            ],
-            [
-              1920,
-              540
-            ],
-            [
-              1920,
-              1080
-            ],
-            [
-              1440,
-              1080
-            ]
-          ]
+          "zone_id": "FLOOR_ISLAND_CAM2",
+          "label": "Central Floor Island / Summer Essentials Display",
+          "polygon": [[400, 600], [1600, 600], [1600, 1080], [400, 1080]]
         }
       ]
     },
     "CAM_ENTRY_01": {
-      "description": "ENTRY \u2014 CAM 3 - entry.mp4",
+      "description": "ENTRY — CAM 3 - entry.mp4 (inside-facing entry camera; exterior/mall at top of frame)",
       "source_file": "CAM 3 - entry.mp4",
       "coverage": "entry",
       "resolution": {
@@ -392,53 +116,22 @@
       },
       "exclude_from_metrics": false,
       "entry_line_y_ratio": 0.55,
+      "entry_inward_direction": "up",
       "zones": [
         {
           "zone_id": "ENTRY_INSIDE",
-          "polygon": [
-            [
-              0,
-              0
-            ],
-            [
-              1920,
-              0
-            ],
-            [
-              1920,
-              594
-            ],
-            [
-              0,
-              594
-            ]
-          ]
+          "label": "Inside store (past glass doors)",
+          "polygon": [[0, 0], [1920, 0], [1920, 594], [0, 594]]
         },
         {
           "zone_id": "ENTRY_EXTERIOR",
-          "polygon": [
-            [
-              0,
-              594
-            ],
-            [
-              1920,
-              594
-            ],
-            [
-              1920,
-              1080
-            ],
-            [
-              0,
-              1080
-            ]
-          ]
+          "label": "Mall corridor / exterior (outside store)",
+          "polygon": [[0, 594], [1920, 594], [1920, 1080], [0, 1080]]
         }
       ]
     },
     "CAM_BILLING_01": {
-      "description": "BILLING \u2014 CAM 5 - billing.mp4",
+      "description": "BILLING — CAM 5 - billing.mp4 (top-down view of billing counter; counter top-half, accessories display right)",
       "source_file": "CAM 5 - billing.mp4",
       "coverage": "billing",
       "resolution": {
@@ -451,45 +144,18 @@
       "zones": [
         {
           "zone_id": "BILLING_COUNTER",
-          "polygon": [
-            [
-              0,
-              0
-            ],
-            [
-              1920,
-              0
-            ],
-            [
-              1920,
-              594
-            ],
-            [
-              0,
-              594
-            ]
-          ]
+          "label": "Billing counter (staff + POS terminal)",
+          "polygon": [[0, 0], [1200, 0], [1200, 540], [0, 540]]
         },
         {
           "zone_id": "BILLING_QUEUE",
-          "polygon": [
-            [
-              0,
-              594
-            ],
-            [
-              1920,
-              594
-            ],
-            [
-              1920,
-              1080
-            ],
-            [
-              0,
-              1080
-            ]
-          ]
+          "label": "Customer queue area in front of billing counter",
+          "polygon": [[0, 540], [1200, 540], [1200, 1080], [0, 1080]]
+        },
+        {
+          "zone_id": "ACCESSORIES_DISPLAY",
+          "label": "Accessories / nail display (right side of billing cam)",
+          "polygon": [[1200, 0], [1920, 0], [1920, 1080], [1200, 1080]]
         }
       ]
     }

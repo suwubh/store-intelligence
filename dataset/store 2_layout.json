@@ -18,7 +18,7 @@
   },
   "cameras": {
     "CAM_BILLING_01": {
-      "description": "BILLING \u2014 billing_area.mp4",
+      "description": "BILLING — billing_area.mp4 (top-down view; two counters side by side, staff at bottom, customers approach from top)",
       "source_file": "billing_area.mp4",
       "coverage": "billing",
       "resolution": {
@@ -31,50 +31,23 @@
       "zones": [
         {
           "zone_id": "BILLING_COUNTER",
-          "polygon": [
-            [
-              0,
-              0
-            ],
-            [
-              960,
-              0
-            ],
-            [
-              960,
-              594
-            ],
-            [
-              0,
-              594
-            ]
-          ]
+          "label": "Billing counter surface (POS terminals, staff side)",
+          "polygon": [[0, 350], [960, 350], [960, 700], [0, 700]]
         },
         {
           "zone_id": "BILLING_QUEUE",
-          "polygon": [
-            [
-              0,
-              594
-            ],
-            [
-              960,
-              594
-            ],
-            [
-              960,
-              1080
-            ],
-            [
-              0,
-              1080
-            ]
-          ]
+          "label": "Customer queue area approaching the billing counters",
+          "polygon": [[0, 0], [960, 0], [960, 350], [0, 350]]
+        },
+        {
+          "zone_id": "POST_BILLING_EXIT",
+          "label": "Area behind billing counters (post-transaction exit path)",
+          "polygon": [[0, 700], [960, 700], [960, 1080], [0, 1080]]
         }
       ]
     },
     "CAM_ENTRY_01": {
-      "description": "ENTRY \u2014 entry 1.mp4",
+      "description": "ENTRY — entry 1.mp4 (inside-facing entry camera; mall corridor at top, store interior at bottom)",
       "source_file": "entry 1.mp4",
       "coverage": "entry",
       "resolution": {
@@ -84,53 +57,22 @@
       },
       "exclude_from_metrics": false,
       "entry_line_y_ratio": 0.55,
+      "entry_inward_direction": "down",
       "zones": [
         {
           "zone_id": "ENTRY_INSIDE",
-          "polygon": [
-            [
-              0,
-              0
-            ],
-            [
-              960,
-              0
-            ],
-            [
-              960,
-              594
-            ],
-            [
-              0,
-              594
-            ]
-          ]
+          "label": "Inside store threshold (past the glass doors)",
+          "polygon": [[0, 0], [960, 0], [960, 594], [0, 594]]
         },
         {
           "zone_id": "ENTRY_EXTERIOR",
-          "polygon": [
-            [
-              0,
-              594
-            ],
-            [
-              960,
-              594
-            ],
-            [
-              960,
-              1080
-            ],
-            [
-              0,
-              1080
-            ]
-          ]
+          "label": "Mall corridor / exterior (outside store)",
+          "polygon": [[0, 594], [960, 594], [960, 1080], [0, 1080]]
         }
       ]
     },
     "CAM_ENTRY_02": {
-      "description": "ENTRY \u2014 entry 2.mp4",
+      "description": "ENTRY — entry 2.mp4 (secondary entry, excluded from metrics to avoid double-counting)",
       "source_file": "entry 2.mp4",
       "coverage": "entry",
       "resolution": {
@@ -140,53 +82,22 @@
       },
       "exclude_from_metrics": true,
       "entry_line_y_ratio": 0.55,
+      "entry_inward_direction": "down",
       "zones": [
         {
           "zone_id": "ENTRY_INSIDE",
-          "polygon": [
-            [
-              0,
-              0
-            ],
-            [
-              960,
-              0
-            ],
-            [
-              960,
-              594
-            ],
-            [
-              0,
-              594
-            ]
-          ]
+          "label": "Inside store threshold",
+          "polygon": [[0, 0], [960, 0], [960, 594], [0, 594]]
         },
         {
           "zone_id": "ENTRY_EXTERIOR",
-          "polygon": [
-            [
-              0,
-              594
-            ],
-            [
-              960,
-              594
-            ],
-            [
-              960,
-              1080
-            ],
-            [
-              0,
-              1080
-            ]
-          ]
+          "label": "Mall corridor / exterior",
+          "polygon": [[0, 594], [960, 594], [960, 1080], [0, 1080]]
         }
       ]
     },
     "CAM_FLOOR_01": {
-      "description": "FLOOR \u2014 zone.mp4",
+      "description": "FLOOR — zone.mp4 (Store 2 zone camera — shelves visible: Pilgrim, Alps, Good Vibes De-Tan, right-side shelves with serums/skincare)",
       "source_file": "zone.mp4",
       "coverage": "floor",
       "resolution": {
@@ -198,172 +109,29 @@
       "entry_line_y_ratio": null,
       "zones": [
         {
-          "zone_id": "FLOOR_1_01",
-          "polygon": [
-            [
-              0,
-              0
-            ],
-            [
-              240,
-              0
-            ],
-            [
-              240,
-              540
-            ],
-            [
-              0,
-              540
-            ]
-          ]
+          "zone_id": "PILGRIM_ALPS",
+          "label": "Pilgrim / Alps left-side shelves",
+          "polygon": [[0, 0], [240, 0], [240, 750], [0, 750]]
         },
         {
-          "zone_id": "FLOOR_1_02",
-          "polygon": [
-            [
-              240,
-              0
-            ],
-            [
-              480,
-              0
-            ],
-            [
-              480,
-              540
-            ],
-            [
-              240,
-              540
-            ]
-          ]
+          "zone_id": "GOOD_VIBES_DETAN",
+          "label": "Good Vibes De-Tan / center-left shelves",
+          "polygon": [[240, 0], [480, 0], [480, 750], [240, 750]]
         },
         {
-          "zone_id": "FLOOR_1_03",
-          "polygon": [
-            [
-              480,
-              0
-            ],
-            [
-              720,
-              0
-            ],
-            [
-              720,
-              540
-            ],
-            [
-              480,
-              540
-            ]
-          ]
+          "zone_id": "SKINCARE_CENTER",
+          "label": "Center skincare / serum shelves",
+          "polygon": [[480, 0], [720, 0], [720, 750], [480, 750]]
         },
         {
-          "zone_id": "FLOOR_1_04",
-          "polygon": [
-            [
-              720,
-              0
-            ],
-            [
-              960,
-              0
-            ],
-            [
-              960,
-              540
-            ],
-            [
-              720,
-              540
-            ]
-          ]
+          "zone_id": "HAIRCARE_WELLNESS",
+          "label": "Right-side haircare / wellness shelves",
+          "polygon": [[720, 0], [960, 0], [960, 750], [720, 750]]
         },
         {
-          "zone_id": "FLOOR_1_05",
-          "polygon": [
-            [
-              0,
-              540
-            ],
-            [
-              240,
-              540
-            ],
-            [
-              240,
-              1080
-            ],
-            [
-              0,
-              1080
-            ]
-          ]
-        },
-        {
-          "zone_id": "FLOOR_1_06",
-          "polygon": [
-            [
-              240,
-              540
-            ],
-            [
-              480,
-              540
-            ],
-            [
-              480,
-              1080
-            ],
-            [
-              240,
-              1080
-            ]
-          ]
-        },
-        {
-          "zone_id": "FLOOR_1_07",
-          "polygon": [
-            [
-              480,
-              540
-            ],
-            [
-              720,
-              540
-            ],
-            [
-              720,
-              1080
-            ],
-            [
-              480,
-              1080
-            ]
-          ]
-        },
-        {
-          "zone_id": "FLOOR_1_08",
-          "polygon": [
-            [
-              720,
-              540
-            ],
-            [
-              960,
-              540
-            ],
-            [
-              960,
-              1080
-            ],
-            [
-              720,
-              1080
-            ]
-          ]
+          "zone_id": "FLOOR_AISLE",
+          "label": "Central floor aisle / browsing area",
+          "polygon": [[0, 750], [960, 750], [960, 1080], [0, 1080]]
         }
       ]
     }

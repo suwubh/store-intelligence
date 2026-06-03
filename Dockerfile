@@ -19,6 +19,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application
 COPY app/ ./app/
 COPY dataset/ ./dataset/
+COPY pipeline/ ./pipeline/
+COPY run_pipeline.py .
 
 # Create data directory
 RUN mkdir -p /data
