@@ -1,0 +1,497 @@
+{
+  "store_id": "ST1008",
+  "store_name": "Store 1",
+  "clip_folder": "Store 1",
+  "layout_image": "Store 1 - layout.png",
+  "open_hours": {
+    "open": "10:00",
+    "close": "22:00"
+  },
+  "billing_zones": [
+    "BILLING_COUNTER",
+    "BILLING_QUEUE"
+  ],
+  "staff_info": {
+    "uniform_color": "black",
+    "detector_profile": "store1_black",
+    "note": "Store 1 staff wear all black; calibrate with pipeline/calibrate_staff.py if needed."
+  },
+  "cameras": {
+    "CAM_FLOOR_01": {
+      "description": "FLOOR \u2014 CAM 1 - zone.mp4",
+      "source_file": "CAM 1 - zone.mp4",
+      "coverage": "floor",
+      "resolution": {
+        "width": 1920,
+        "height": 1080,
+        "fps": 29.97
+      },
+      "exclude_from_metrics": false,
+      "entry_line_y_ratio": null,
+      "zones": [
+        {
+          "zone_id": "FLOOR_1_01",
+          "polygon": [
+            [
+              0,
+              0
+            ],
+            [
+              480,
+              0
+            ],
+            [
+              480,
+              540
+            ],
+            [
+              0,
+              540
+            ]
+          ]
+        },
+        {
+          "zone_id": "FLOOR_1_02",
+          "polygon": [
+            [
+              480,
+              0
+            ],
+            [
+              960,
+              0
+            ],
+            [
+              960,
+              540
+            ],
+            [
+              480,
+              540
+            ]
+          ]
+        },
+        {
+          "zone_id": "FLOOR_1_03",
+          "polygon": [
+            [
+              960,
+              0
+            ],
+            [
+              1440,
+              0
+            ],
+            [
+              1440,
+              540
+            ],
+            [
+              960,
+              540
+            ]
+          ]
+        },
+        {
+          "zone_id": "FLOOR_1_04",
+          "polygon": [
+            [
+              1440,
+              0
+            ],
+            [
+              1920,
+              0
+            ],
+            [
+              1920,
+              540
+            ],
+            [
+              1440,
+              540
+            ]
+          ]
+        },
+        {
+          "zone_id": "FLOOR_1_05",
+          "polygon": [
+            [
+              0,
+              540
+            ],
+            [
+              480,
+              540
+            ],
+            [
+              480,
+              1080
+            ],
+            [
+              0,
+              1080
+            ]
+          ]
+        },
+        {
+          "zone_id": "FLOOR_1_06",
+          "polygon": [
+            [
+              480,
+              540
+            ],
+            [
+              960,
+              540
+            ],
+            [
+              960,
+              1080
+            ],
+            [
+              480,
+              1080
+            ]
+          ]
+        },
+        {
+          "zone_id": "FLOOR_1_07",
+          "polygon": [
+            [
+              960,
+              540
+            ],
+            [
+              1440,
+              540
+            ],
+            [
+              1440,
+              1080
+            ],
+            [
+              960,
+              1080
+            ]
+          ]
+        },
+        {
+          "zone_id": "FLOOR_1_08",
+          "polygon": [
+            [
+              1440,
+              540
+            ],
+            [
+              1920,
+              540
+            ],
+            [
+              1920,
+              1080
+            ],
+            [
+              1440,
+              1080
+            ]
+          ]
+        }
+      ]
+    },
+    "CAM_FLOOR_02": {
+      "description": "FLOOR \u2014 CAM 2 - zone.mp4",
+      "source_file": "CAM 2 - zone.mp4",
+      "coverage": "floor",
+      "resolution": {
+        "width": 1920,
+        "height": 1080,
+        "fps": 29.97
+      },
+      "exclude_from_metrics": false,
+      "entry_line_y_ratio": null,
+      "zones": [
+        {
+          "zone_id": "FLOOR_2_01",
+          "polygon": [
+            [
+              0,
+              0
+            ],
+            [
+              480,
+              0
+            ],
+            [
+              480,
+              540
+            ],
+            [
+              0,
+              540
+            ]
+          ]
+        },
+        {
+          "zone_id": "FLOOR_2_02",
+          "polygon": [
+            [
+              480,
+              0
+            ],
+            [
+              960,
+              0
+            ],
+            [
+              960,
+              540
+            ],
+            [
+              480,
+              540
+            ]
+          ]
+        },
+        {
+          "zone_id": "FLOOR_2_03",
+          "polygon": [
+            [
+              960,
+              0
+            ],
+            [
+              1440,
+              0
+            ],
+            [
+              1440,
+              540
+            ],
+            [
+              960,
+              540
+            ]
+          ]
+        },
+        {
+          "zone_id": "FLOOR_2_04",
+          "polygon": [
+            [
+              1440,
+              0
+            ],
+            [
+              1920,
+              0
+            ],
+            [
+              1920,
+              540
+            ],
+            [
+              1440,
+              540
+            ]
+          ]
+        },
+        {
+          "zone_id": "FLOOR_2_05",
+          "polygon": [
+            [
+              0,
+              540
+            ],
+            [
+              480,
+              540
+            ],
+            [
+              480,
+              1080
+            ],
+            [
+              0,
+              1080
+            ]
+          ]
+        },
+        {
+          "zone_id": "FLOOR_2_06",
+          "polygon": [
+            [
+              480,
+              540
+            ],
+            [
+              960,
+              540
+            ],
+            [
+              960,
+              1080
+            ],
+            [
+              480,
+              1080
+            ]
+          ]
+        },
+        {
+          "zone_id": "FLOOR_2_07",
+          "polygon": [
+            [
+              960,
+              540
+            ],
+            [
+              1440,
+              540
+            ],
+            [
+              1440,
+              1080
+            ],
+            [
+              960,
+              1080
+            ]
+          ]
+        },
+        {
+          "zone_id": "FLOOR_2_08",
+          "polygon": [
+            [
+              1440,
+              540
+            ],
+            [
+              1920,
+              540
+            ],
+            [
+              1920,
+              1080
+            ],
+            [
+              1440,
+              1080
+            ]
+          ]
+        }
+      ]
+    },
+    "CAM_ENTRY_01": {
+      "description": "ENTRY \u2014 CAM 3 - entry.mp4",
+      "source_file": "CAM 3 - entry.mp4",
+      "coverage": "entry",
+      "resolution": {
+        "width": 1920,
+        "height": 1080,
+        "fps": 29.97
+      },
+      "exclude_from_metrics": false,
+      "entry_line_y_ratio": 0.55,
+      "zones": [
+        {
+          "zone_id": "ENTRY_INSIDE",
+          "polygon": [
+            [
+              0,
+              0
+            ],
+            [
+              1920,
+              0
+            ],
+            [
+              1920,
+              594
+            ],
+            [
+              0,
+              594
+            ]
+          ]
+        },
+        {
+          "zone_id": "ENTRY_EXTERIOR",
+          "polygon": [
+            [
+              0,
+              594
+            ],
+            [
+              1920,
+              594
+            ],
+            [
+              1920,
+              1080
+            ],
+            [
+              0,
+              1080
+            ]
+          ]
+        }
+      ]
+    },
+    "CAM_BILLING_01": {
+      "description": "BILLING \u2014 CAM 5 - billing.mp4",
+      "source_file": "CAM 5 - billing.mp4",
+      "coverage": "billing",
+      "resolution": {
+        "width": 1920,
+        "height": 1080,
+        "fps": 24.98
+      },
+      "exclude_from_metrics": false,
+      "entry_line_y_ratio": null,
+      "zones": [
+        {
+          "zone_id": "BILLING_COUNTER",
+          "polygon": [
+            [
+              0,
+              0
+            ],
+            [
+              1920,
+              0
+            ],
+            [
+              1920,
+              594
+            ],
+            [
+              0,
+              594
+            ]
+          ]
+        },
+        {
+          "zone_id": "BILLING_QUEUE",
+          "polygon": [
+            [
+              0,
+              594
+            ],
+            [
+              1920,
+              594
+            ],
+            [
+              1920,
+              1080
+            ],
+            [
+              0,
+              1080
+            ]
+          ]
+        }
+      ]
+    }
+  }
+}

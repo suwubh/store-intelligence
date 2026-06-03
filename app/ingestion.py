@@ -9,12 +9,14 @@ from sqlalchemy.orm import Session
 
 from app.database import EventRecord, POSTransaction, SessionRecord
 from app.models import IngestRequest, IngestResponse, StoreEvent
+from app.store_ids import normalize_store_id
 
 logger = logging.getLogger(__name__)
 
 BILLING_ZONES = {"BILLING", "BILLING_COUNTER", "BILLING_QUEUE", "CHECKOUT", "CASHIER"}
 CONVERSION_WINDOW_SECONDS = 300
 POS_TIMEZONE_OFFSET = timedelta(minutes=int(os.getenv("POS_TIMEZONE_OFFSET_MINUTES", "0")))
+CROSS_CAMERA_LINK_WINDOW_SECONDS = 30 * 60
 
 # Updated sample_events.jsonl: track_id → id_token (verified from resource file)
 SAMPLE_TRACK_ALIASES = {
@@ -31,6 +33,7 @@ def ingest_events(request: IngestRequest, db: Session) -> IngestResponse:
     errors = []
     seen_sessions: dict[str, SessionRecord] = {}
     track_aliases = dict(SAMPLE_TRACK_ALIASES)
+    camera_aliases: dict[str, str] = {}
 
     # First pass: learn id_token ↔ track_id links from the same batch
     for raw in request.events:
@@ -44,6 +47,7 @@ def ingest_events(request: IngestRequest, db: Session) -> IngestResponse:
     for idx, raw in enumerate(request.events):
         try:
             event = _parse_event(raw, track_aliases)
+            _link_camera_local_visitor(event, db, seen_sessions, camera_aliases)
         except (ValidationError, Exception) as e:
             rejected += 1
             errors.append({
@@ -87,6 +91,136 @@ def _parse_event(raw: dict, track_aliases: dict[int, str]) -> StoreEvent:
         if alias:
             data["visitor_id"] = alias
     return StoreEvent(**data)
+
+
+def _camera_alias_key(event: StoreEvent) -> str:
+    return f"{event.store_id}:{event.camera_id}:{event.visitor_id}"
+
+
+def _link_camera_local_visitor(
+    event: StoreEvent,
+    db: Session,
+    seen_sessions: dict[str, SessionRecord],
+    camera_aliases: dict[str, str],
+) -> None:
+    """
+    The detector runs each camera clip in its own process, so floor/billing
+    tracks may have camera-local visitor IDs. Link those events to an entry
+    session when a plausible session already exists for the same store.
+    """
+    if event.event_type.value in ("ENTRY", "EXIT", "REENTRY"):
+        return
+
+    key = _camera_alias_key(event)
+    if key in camera_aliases:
+        event.visitor_id = camera_aliases[key]
+        return
+
+    if _has_matching_session(event, db, seen_sessions):
+        return
+
+    candidate = _best_cross_camera_session(event, db, seen_sessions)
+    if not candidate:
+        return
+
+    camera_aliases[key] = candidate.visitor_id
+    event.visitor_id = candidate.visitor_id
+
+
+def _has_matching_session(
+    event: StoreEvent,
+    db: Session,
+    seen_sessions: dict[str, SessionRecord],
+) -> bool:
+    for session in seen_sessions.values():
+        if session.store_id == event.store_id and session.visitor_id == event.visitor_id:
+            return True
+
+    existing = db.execute(
+        select(SessionRecord).where(
+            and_(
+                SessionRecord.store_id == event.store_id,
+                SessionRecord.visitor_id == event.visitor_id,
+            )
+        ).limit(1)
+    ).scalar_one_or_none()
+    return existing is not None
+
+
+def _best_cross_camera_session(
+    event: StoreEvent,
+    db: Session,
+    seen_sessions: dict[str, SessionRecord],
+) -> SessionRecord | None:
+    candidates: dict[str, SessionRecord] = {}
+    for session in seen_sessions.values():
+        if _session_can_cover_event(session, event):
+            candidates[session.session_key] = session
+
+    event_ts = _as_naive(event.timestamp)
+    window_start = event_ts - timedelta(seconds=CROSS_CAMERA_LINK_WINDOW_SECONDS)
+    window_end = event_ts + timedelta(seconds=CROSS_CAMERA_LINK_WINDOW_SECONDS)
+    rows = db.execute(
+        select(SessionRecord).where(
+            and_(
+                SessionRecord.store_id == event.store_id,
+                SessionRecord.is_staff == False,
+                SessionRecord.entry_time.isnot(None),
+                SessionRecord.entry_time <= window_end,
+            )
+        ).order_by(SessionRecord.entry_time.asc())
+    ).scalars().all()
+    for session in rows:
+        if _session_can_cover_event(session, event, window_start=window_start, window_end=window_end):
+            candidates[session.session_key] = session
+
+    if not candidates:
+        return None
+
+    return min(
+        candidates.values(),
+        key=lambda session: (
+            _session_last_event_time(session, db) or session.entry_time or event_ts,
+            session.entry_time or event_ts,
+        ),
+    )
+
+
+def _session_can_cover_event(
+    session: SessionRecord,
+    event: StoreEvent,
+    window_start=None,
+    window_end=None,
+) -> bool:
+    if session.is_staff or not session.entry_time:
+        return False
+    event_ts = _as_naive(event.timestamp)
+    entry_time = _as_naive(session.entry_time)
+    exit_time = _as_naive(session.exit_time) if session.exit_time else None
+    window_start = window_start or event_ts - timedelta(seconds=CROSS_CAMERA_LINK_WINDOW_SECONDS)
+    window_end = window_end or event_ts + timedelta(seconds=CROSS_CAMERA_LINK_WINDOW_SECONDS)
+    if entry_time > window_end:
+        return False
+    if exit_time and exit_time < window_start:
+        return False
+    return True
+
+
+def _as_naive(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value
+    return value.replace(tzinfo=None)
+
+
+def _session_last_event_time(session: SessionRecord, db: Session):
+    return db.execute(
+        select(EventRecord.timestamp).where(
+            and_(
+                EventRecord.store_id == session.store_id,
+                EventRecord.visitor_id == session.visitor_id,
+            )
+        ).order_by(EventRecord.timestamp.desc()).limit(1)
+    ).scalar_one_or_none()
 
 
 def _event_to_record(event: StoreEvent) -> EventRecord:
@@ -295,7 +429,7 @@ def load_pos_transactions(csv_path: str, db: Session):
                             f"{row['order_date'].strip()} {row['order_time'].strip()}",
                             "%d-%m-%Y %H:%M:%S",
                         )
-                        store_id = row["store_id"].strip()
+                        store_id = normalize_store_id(row["store_id"]) or row["store_id"].strip()
                         orders[tx_id] = {
                             "store_id": store_id,
                             "timestamp": parsed - POS_TIMEZONE_OFFSET,
@@ -308,7 +442,7 @@ def load_pos_transactions(csv_path: str, db: Session):
                     if not tx_id or db.get(POSTransaction, tx_id):
                         continue
                     timestamp = datetime.fromisoformat(row.get("timestamp", "").strip().replace("Z", "+00:00"))
-                    store_id = row["store_id"].strip()
+                    store_id = normalize_store_id(row["store_id"]) or row["store_id"].strip()
                     db.add(POSTransaction(
                         transaction_id=tx_id,
                         store_id=store_id,

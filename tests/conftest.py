@@ -53,13 +53,14 @@ def make_event_helper():
         confidence=0.90,
         timestamp=None,
         store_id=STORE,
+        camera_id="CAM_ENTRY_01",
         session_seq=1,
         queue_depth=None,
     ):
         return {
             "event_id": str(uuid.uuid4()),
             "store_id": store_id,
-            "camera_id": "CAM_ENTRY_01",
+            "camera_id": camera_id,
             "visitor_id": visitor_id or f"VIS_{uuid.uuid4().hex[:6]}",
             "event_type": event_type,
             "timestamp": (timestamp or NOW).isoformat(),

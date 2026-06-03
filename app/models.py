@@ -5,6 +5,8 @@ from enum import Enum
 import uuid
 import json
 
+from app.store_ids import normalize_store_id
+
 
 class EventType(str, Enum):
     ENTRY = "ENTRY"
@@ -49,7 +51,7 @@ class StoreEvent(BaseModel):
             data["event_type"] = event_type
 
         data.setdefault("event_id", _stable_event_id(raw))
-        data.setdefault("store_id", _normalise_store_id(data.get("store_code")))
+        data["store_id"] = normalize_store_id(data.get("store_id") or data.get("store_code"))
         data.setdefault("visitor_id", _normalise_visitor_id(data))
         data.setdefault("timestamp", _normalise_timestamp(data))
         data.setdefault("zone_id", data.get("zone_id"))
@@ -100,17 +102,6 @@ def _normalise_event_type(event_type: str) -> Optional[str]:
         "reentry": "REENTRY",
     }
     return mapping.get(event_type.lower(), direct)
-
-
-def _normalise_store_id(store_code: Any) -> Optional[str]:
-    if not store_code:
-        return None
-    store = str(store_code).strip()
-    if store.lower().startswith("store_"):
-        suffix = store.split("_", 1)[1]
-        if suffix.isdigit():
-            return f"ST{suffix}"
-    return store
 
 
 def _normalise_visitor_id(data: dict[str, Any]) -> str:

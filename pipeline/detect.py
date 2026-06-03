@@ -30,7 +30,7 @@ def parse_args():
     p.add_argument("--output", default="dataset/events.jsonl")
     p.add_argument("--clip-start", default=None)
     p.add_argument("--api-url", default=None)
-    p.add_argument("--conf", type=float, default=0.35)
+    p.add_argument("--conf", type=float, default=0.20)
     p.add_argument("--device", default="cpu")
     return p.parse_args()
 
@@ -38,8 +38,15 @@ def parse_args():
 def get_clip_start_time(clip_start_arg, video_path):
     if clip_start_arg:
         return datetime.fromisoformat(clip_start_arg.replace("Z", "+00:00"))
-    mtime = Path(video_path).stat().st_mtime
-    return datetime.fromtimestamp(mtime, tz=timezone.utc)
+
+    video_name = Path(video_path).name.lower()
+
+    # Store 1 clips align to POS day
+    if "cam" in video_name:
+        return datetime(2026, 4, 10, 12, 0, 0, tzinfo=timezone.utc)
+
+    # Store 2 demo day
+    return datetime(2026, 3, 8, 12, 0, 0, tzinfo=timezone.utc)
 
 
 def frame_to_timestamp(clip_start, frame_idx, fps):
@@ -96,7 +103,7 @@ def run_pipeline(args):
         (np.array([0,   0,   0]), np.array([180, 255, 45])),  # Strict dark colors (V < 45)
         (np.array([0,   0,   0]), np.array([180,  50, 45])),  # Dark low saturation colors
     ]
-    staff_detector = StaffDetector(uniform_ranges=black_ranges)
+    staff_detector = StaffDetector(uniform_ranges=black_ranges, store_id=args.store)
 
 
     zone_mapper = ZoneMapper(args.layout, args.store, args.camera)

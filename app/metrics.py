@@ -4,6 +4,7 @@ from sqlalchemy import select, func, and_, or_, distinct
 
 from app.database import EventRecord, SessionRecord, get_day_window
 from app.models import StoreMetrics, ZoneDwellMetric
+from app.store_ids import normalize_store_id
 
 
 def _billing_clause():
@@ -16,6 +17,7 @@ def _billing_clause():
 
 
 def get_store_metrics(store_id: str, db: Session) -> StoreMetrics:
+    store_id = normalize_store_id(store_id) or store_id
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     day_start, day_end = get_day_window(db, store_id)
 

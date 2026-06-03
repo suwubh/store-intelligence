@@ -12,8 +12,8 @@ Store IDs used by the API:
 
 | Clip folder | `store_id`   |
 |-------------|--------------|
-| Store 1     | `ST_STORE_1` |
-| Store 2     | `ST_STORE_2` |
+| Store 1     | `ST1008`     |
+| Store 2     | `ST1076`     |
 
 ## Quick Start
 
@@ -40,7 +40,7 @@ curl http://localhost:8000/stores/ST1076/funnel
 ## Raw Clip Processing
 
 ```powershell
-# One store (layout is dataset/clips/Store 1/store_layout.json)
+# One store (layout is dataset/clips/Store 1/store_layout.json; emits ST1008)
 python run_pipeline.py --store-folder "Store 1"
 
 # Both stores
@@ -56,7 +56,7 @@ Windows wrapper:
 pipeline\run.bat --store-folder "Store 1" --api-url http://localhost:8000
 ```
 
-Events are written to `dataset/events/<store_id>_<camera>_events.jsonl`.
+Events are written to `dataset/events/<store_id>_<camera>_events.jsonl`. The runner processes entry cameras first, then floor/zone cameras, then billing cameras so API ingestion can link camera-local tracks to the active entry sessions.
 
 Regenerate layout JSON from clips (resolutions + filename → camera roles):
 
@@ -83,7 +83,11 @@ The detection pipeline emits the **canonical uppercase schema** (`ENTRY`, `ZONE_
 
 `dataset/pos_transactions.csv` uses line-item rows aggregated by `order_id`. Conversion: a visitor with a billing visit at time **B** is converted if a POS transaction exists with timestamp **T** where **B ≤ T ≤ B + 5 minutes** (challenge rule).
 
-Align POS `store_id` with the store you are analysing (`ST_STORE_1`, `ST_STORE_2`, or `ST1076` for the sample JSONL). Set `POS_TIMEZONE_OFFSET_MINUTES` if POS and event timestamps use different bases.
+Store IDs are normalized at ingest/query time. `Store 1` and `ST_STORE_1` map to `ST1008`; `Store 2`, `ST_STORE_2`, and `store_1076` map to `ST1076`. Set `POS_TIMEZONE_OFFSET_MINUTES` if POS and event timestamps use different bases.
+
+## Calibration Notes
+
+The bundled `store_layout.json` files contain runnable polygons for every camera, but the floor zones are coarse frame-space regions. For stronger zone scoring, refine the polygons against the layout PNG and visible camera frames before final submission. Staff profiles are store-specific: Store 1 uses black-uniform detection; Store 2 uses a pink-top/black-bottom profile.
 
 ## Tests
 
@@ -99,6 +103,8 @@ app/                  FastAPI, ingestion, metrics, funnel, heatmap, anomalies
 pipeline/             Detection, layout_builder, validate_dataset, runners
 dataset/clips/        Store 1, Store 2 (clips + per-store store_layout.json)
 dataset/events/       Emitted JSONL + sample_events.jsonl
-docs/DESIGN.md        Architecture
-docs/CHOICES.md       Engineering decisions
+DESIGN.md             Architecture and AI-assisted decisions
+CHOICES.md            Engineering decisions
+docs/DESIGN.md        Copy of architecture notes
+docs/CHOICES.md       Copy of engineering decisions
 ```

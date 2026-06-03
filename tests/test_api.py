@@ -115,6 +115,44 @@ class TestIngest:
         billing = next(stage for stage in funnel["stages"] if stage["stage"] == "Billing Queue")
         assert billing["count"] == 1
 
+    def test_store_folder_alias_normalizes_to_pos_store(self, client, make_event_helper, ingest_helper):
+        event = make_event_helper(store_id="ST_STORE_1")
+        r = ingest_helper(client, [event])
+        assert r.status_code == 200
+        assert r.json()["accepted"] == 1
+
+        metrics = client.get("/stores/ST1008/metrics")
+        assert metrics.status_code == 200
+        assert metrics.json()["unique_visitors"] == 1
+
+        alias_metrics = client.get("/stores/ST_STORE_1/metrics")
+        assert alias_metrics.status_code == 200
+        assert alias_metrics.json()["store_id"] == "ST1008"
+        assert alias_metrics.json()["unique_visitors"] == 1
+
+    def test_cross_camera_zone_event_links_to_active_entry_session(self, client, make_event_helper, ingest_helper):
+        entry = make_event_helper(
+            store_id="ST1008",
+            camera_id="CAM_ENTRY_01",
+            visitor_id="VIS_ENTRY_A",
+            event_type="ENTRY",
+        )
+        floor = make_event_helper(
+            store_id="ST1008",
+            camera_id="CAM_FLOOR_01",
+            visitor_id="VIS_LOCAL_7",
+            event_type="ZONE_ENTER",
+            zone_id="SKINCARE",
+        )
+
+        r = ingest_helper(client, [entry, floor])
+        assert r.status_code == 200
+        assert r.json()["accepted"] == 2
+
+        funnel = client.get("/stores/ST1008/funnel").json()
+        assert funnel["stages"][0]["count"] == 1
+        assert funnel["stages"][1]["count"] == 1
+
     def test_updated_pos_order_file_loads(self, tmp_path, db_session):
         pos_file = tmp_path / "pos.csv"
         pos_file.write_text(

@@ -71,7 +71,10 @@ class MultiObjectTracker:
         entry_line_ratio: float = ENTRY_LINE_RATIO,
     ) -> list[dict]:
         frame_h, frame_w = frame.shape[:2]
-        entry_line_y = int(frame_h * entry_line_ratio)
+
+        entry_line_y = None
+        if entry_line_ratio is not None:
+            entry_line_y = int(frame_h * entry_line_ratio)
 
         if self._use_bytetrack:
             tracked = self._bytetrack_update(detections, frame, timestamp, frame_h, frame_w)
@@ -89,13 +92,14 @@ class MultiObjectTracker:
 
             cy = (track["bbox"][1] + track["bbox"][3]) / 2
             state.just_crossed = False
-            if state.last_y is not None:
-                if state.last_y < entry_line_y <= cy:
-                    state.direction = "INWARD"
-                    state.just_crossed = True
-                elif state.last_y > entry_line_y >= cy:
-                    state.direction = "OUTWARD"
-                    state.just_crossed = True
+
+            # Only entry cameras perform line-crossing logic
+            if entry_line_y is not None:
+                if state.last_y is not None:
+                    if state.last_y > entry_line_y >= cy:
+                        state.direction = "OUTWARD"
+                        state.just_crossed = True
+
             state.last_y = cy
 
             results.append(

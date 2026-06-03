@@ -24,9 +24,23 @@ VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv"}
 def normalize_store_id(folder_name: str) -> str:
     """Map clip folder name to a stable store_id for events and API paths."""
     name = folder_name.strip()
+    explicit = {
+        "store 1": "ST1008",
+        "store_1": "ST1008",
+        "store 2": "ST1076",
+        "store_2": "ST1076",
+    }
+    key = re.sub(r"[^A-Za-z0-9]+", "_", name).strip("_").lower()
+    if key in explicit:
+        return explicit[key]
     m = re.match(r"store\s*(\d+)", name, re.I)
     if m:
-        return f"ST_STORE_{m.group(1)}"
+        number = m.group(1)
+        if number == "1":
+            return "ST1008"
+        if number == "2":
+            return "ST1076"
+        return f"ST{number}"
     slug = re.sub(r"[^A-Za-z0-9]+", "_", name).strip("_").upper()
     return slug if slug else "ST_UNKNOWN"
 
@@ -164,11 +178,22 @@ def build_layout_for_store_dir(store_dir: Path, store_id: Optional[str] = None) 
         "layout_image": layout_image,
         "open_hours": {"open": "10:00", "close": "22:00"},
         "billing_zones": ["BILLING_COUNTER", "BILLING_QUEUE"],
-        "staff_info": {
-            "uniform_color": "black",
-            "note": "Calibrate with pipeline/calibrate_staff.py per store if needed.",
-        },
+        "staff_info": _staff_info_for_store(store_id),
         "cameras": cameras,
+    }
+
+
+def _staff_info_for_store(store_id: str) -> dict:
+    if store_id == "ST1076":
+        return {
+            "uniform_color": "pink top / black bottom",
+            "detector_profile": "store2_pink_black",
+            "note": "Store 2 staff wear a pink top and black bottom; tune HSV ranges if uniforms differ.",
+        }
+    return {
+        "uniform_color": "black",
+        "detector_profile": "store1_black",
+        "note": "Store 1 staff wear all black; calibrate with pipeline/calibrate_staff.py if needed.",
     }
 
 

@@ -3,6 +3,7 @@ from sqlalchemy import select, func, and_, distinct, or_
 
 from app.database import EventRecord, SessionRecord, get_day_window
 from app.models import FunnelResponse, FunnelStage
+from app.store_ids import normalize_store_id
 
 
 def _billing_clause():
@@ -15,25 +16,36 @@ def _billing_clause():
 
 
 def get_store_funnel(store_id: str, db: Session) -> FunnelResponse:
+    store_id = normalize_store_id(store_id) or store_id
     day_start, day_end = get_day_window(db, store_id)
 
-    session_base = and_(
+    store_customer_base = and_(
         SessionRecord.store_id == store_id,
         SessionRecord.is_staff == False,
+    )
+    entry_session_base = and_(
+        store_customer_base,
         SessionRecord.entry_time.isnot(None),
         SessionRecord.entry_time >= day_start,
         SessionRecord.entry_time < day_end,
     )
+    activity_session_base = and_(
+        store_customer_base,
+        or_(
+            and_(SessionRecord.entry_time.isnot(None), SessionRecord.entry_time >= day_start, SessionRecord.entry_time < day_end),
+            and_(SessionRecord.billing_at.isnot(None), SessionRecord.billing_at >= day_start, SessionRecord.billing_at < day_end),
+        ),
+    )
 
     # Distinct visitors — re-entry must not double-count (challenge funnel rule)
     total_entries = db.execute(
-        select(func.count(distinct(SessionRecord.visitor_id))).where(session_base)
+        select(func.count(distinct(SessionRecord.visitor_id))).where(entry_session_base)
     ).scalar() or 0
 
     zone_visitors = db.execute(
         select(func.count(distinct(SessionRecord.visitor_id))).where(
             and_(
-                session_base,
+                activity_session_base,
                 SessionRecord.zones_visited.isnot(None),
                 SessionRecord.zones_visited != "",
             )
@@ -42,18 +54,20 @@ def get_store_funnel(store_id: str, db: Session) -> FunnelResponse:
 
     billing_visitors = db.execute(
         select(func.count(distinct(SessionRecord.visitor_id))).where(
-            and_(session_base, SessionRecord.visited_billing == True)
+            and_(activity_session_base, SessionRecord.visited_billing == True)
         )
     ).scalar() or 0
 
     purchasers = db.execute(
         select(func.count(distinct(SessionRecord.visitor_id))).where(
-            and_(session_base, SessionRecord.converted == True)
+            and_(activity_session_base, SessionRecord.converted == True)
         )
     ).scalar() or 0
 
     def drop_off(current, previous):
         if previous == 0:
+            return 0.0
+        if current > previous:
             return 0.0
         return round((1 - current / previous) * 100, 2)
 

@@ -75,7 +75,7 @@ def analyze_roi_color(image_path: str, x: int, y: int, w: int, h: int):
     v_lo = max(0, v_vals.mean() - 2*v_vals.std())
     v_hi = min(255, v_vals.mean() + 2*v_vals.std())
 
-    print(f"\n  Paste this into staff_detector.py DEFAULT_UNIFORM_RANGES:")
+    print(f"\n  Paste this into staff_detector.py BLACK_UNIFORM_RANGES or a store-specific profile:")
     print(f"  (np.array([{h_lo:.0f}, {s_lo:.0f}, {v_lo:.0f}]), np.array([{h_hi:.0f}, {s_hi:.0f}, {v_hi:.0f}])),")
 
 

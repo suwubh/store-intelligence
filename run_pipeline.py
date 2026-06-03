@@ -19,6 +19,14 @@ from pathlib import Path
 from pipeline.layout_builder import list_store_clip_dirs, load_store_layout, normalize_store_id
 
 
+CAMERA_ROLE_ORDER = {
+    "entry": 0,
+    "floor": 1,
+    "zone": 1,
+    "billing": 2,
+}
+
+
 def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--store-folder", help='Clip folder name under dataset/clips, e.g. "Store 1"')
@@ -44,7 +52,10 @@ def process_store(store_dir: Path, dataset: Path, device: str, api_url: str | No
     }
 
     video_extensions = {".mp4", ".avi", ".mov", ".mkv"}
-    videos = sorted(p for p in store_dir.iterdir() if p.suffix.lower() in video_extensions)
+    videos = sorted(
+        (p for p in store_dir.iterdir() if p.suffix.lower() in video_extensions),
+        key=lambda p: _video_sort_key(p, source_map),
+    )
 
     print()
     print("═══════════════════════════════════════════")
@@ -105,7 +116,7 @@ def process_store(store_dir: Path, dataset: Path, device: str, api_url: str | No
 
 def ingest_store_events(output_dir: Path, store_id: str, api_url: str):
     print(f"  Ingesting {store_id} → {api_url}")
-    for ef in sorted(output_dir.glob(f"{store_id}_*_events.jsonl")):
+    for ef in sorted(output_dir.glob(f"{store_id}_*_events.jsonl"), key=_event_file_sort_key):
         events = []
         for line in ef.read_text(encoding="utf-8").splitlines():
             if line.strip():
@@ -124,6 +135,29 @@ def ingest_store_events(output_dir: Path, store_id: str, api_url: str):
             with urllib.request.urlopen(req, timeout=60) as r:
                 res = json.loads(r.read())
                 print(f"    {ef.name}: accepted={res.get('accepted')} dup={res.get('duplicate')}")
+
+
+def _video_sort_key(path: Path, source_map: dict[str, str]) -> tuple[int, str]:
+    cam_id = source_map.get(path.name.lower(), "")
+    text = f"{cam_id} {path.name}".lower()
+    if "entry" in text:
+        role = "entry"
+    elif any(token in text for token in ("billing", "cashier", "checkout")):
+        role = "billing"
+    else:
+        role = "floor"
+    return CAMERA_ROLE_ORDER.get(role, 9), path.name.lower()
+
+
+def _event_file_sort_key(path: Path) -> tuple[int, str]:
+    text = path.name.lower()
+    if "entry" in text:
+        role = "entry"
+    elif "billing" in text:
+        role = "billing"
+    else:
+        role = "floor"
+    return CAMERA_ROLE_ORDER.get(role, 9), path.name.lower()
 
 
 def main():

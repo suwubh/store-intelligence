@@ -6,6 +6,7 @@ from app.database import EventRecord, SessionRecord
 from app.models import (
     AnomaliesResponse, Anomaly, AnomalySeverity, AnomalyType
 )
+from app.store_ids import normalize_store_id
 
 # Thresholds
 QUEUE_SPIKE_THRESHOLD = 5          # depth > 5 → WARN; > 10 → CRITICAL
@@ -16,6 +17,7 @@ STALE_FEED_MINUTES = 10
 
 
 def get_anomalies(store_id: str, db: Session) -> AnomaliesResponse:
+    store_id = normalize_store_id(store_id) or store_id
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     anomalies: list[Anomaly] = []
 

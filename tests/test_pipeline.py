@@ -43,3 +43,21 @@ def test_reentry_logic():
     assert tracker.is_reentry(vid2)
     # The reentry flag should be cleared after reading
     assert not tracker.is_reentry(vid2)
+
+
+def test_store2_staff_profile_detects_pink_top_black_bottom():
+    detector = StaffDetector(store_id="ST1076")
+    frame = np.full((120, 80, 3), 255, dtype=np.uint8)
+    # BGR pink upper body and black lower body inside the person box.
+    frame[20:65, 20:60] = np.array([180, 80, 220], dtype=np.uint8)
+    frame[65:110, 20:60] = np.array([15, 15, 15], dtype=np.uint8)
+
+    assert detector.is_staff(frame, [20, 10, 60, 115])
+
+
+def test_store1_staff_profile_detects_black_uniform():
+    detector = StaffDetector(store_id="ST1008")
+    frame = np.full((100, 80, 3), 255, dtype=np.uint8)
+    frame[30:70, 20:60] = np.array([10, 10, 10], dtype=np.uint8)
+
+    assert detector.is_staff(frame, [20, 10, 60, 90])

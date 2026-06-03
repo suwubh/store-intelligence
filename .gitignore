@@ -4,6 +4,7 @@ __pycache__/
 *.pyo
 .pytest_cache/
 .coverage
+.coveragerc
 *.db
 *.pt
 *.onnx
