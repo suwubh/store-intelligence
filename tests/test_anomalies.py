@@ -50,3 +50,24 @@ class TestAnomalies:
         anomalies = r.json()["anomalies"]
         types = [a["anomaly_type"] for a in anomalies]
         assert "CONVERSION_DROP" in types
+
+    def test_dead_zone_anomaly_emitted(self, client, make_event_helper, ingest_helper):
+        """A zone with activity earlier today but no visit in the last 30+ minutes triggers INFO dead zone."""
+        from datetime import datetime, timezone, timedelta
+        import uuid
+        old_ts = datetime.now(timezone.utc) - timedelta(minutes=45)
+        now_ts = datetime.now(timezone.utc)
+        vis = f"VIS_{uuid.uuid4().hex[:6]}"
+        ingest_helper(client, [
+            make_event_helper(event_type="ENTRY", visitor_id=vis, is_staff=False, timestamp=old_ts),
+            make_event_helper(event_type="ZONE_ENTER", visitor_id=vis, zone_id="SKINCARE",
+                              is_staff=False, timestamp=old_ts),
+            make_event_helper(event_type="ENTRY", visitor_id=vis, is_staff=False, timestamp=now_ts),
+        ])
+        r = client.get("/stores/ST1008/anomalies")
+        assert r.status_code == 200
+        types = [a["anomaly_type"] for a in r.json()["anomalies"]]
+        assert "DEAD_ZONE" in types
+        dead = next(a for a in r.json()["anomalies"] if a["anomaly_type"] == "DEAD_ZONE")
+        assert dead["severity"] == "INFO"
+        assert dead["zone_id"] == "SKINCARE"

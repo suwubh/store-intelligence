@@ -103,6 +103,7 @@ async def logging_middleware(request: Request, call_next):
             "store_id": store_id,
             "endpoint": request.url.path,
             "latency_ms": latency_ms,
+            "event_count": getattr(request.state, "event_count", None),
             "status_code": response.status_code,
         }
     )
@@ -150,19 +151,7 @@ def ingest(
     Returns partial success on malformed events.
     """
     result = ingest_events(request_body, db)
-    first = request_body.events[0] if request_body.events else {}
-    store_id_log = first.get("store_id", first.get("store_code", "-")) if isinstance(first, dict) else getattr(first, "store_id", "-")
-    logger.info(
-        "ingest_complete",
-        extra={
-            "trace_id": getattr(request.state, "trace_id", "-"),
-            "store_id": store_id_log,
-            "endpoint": "/events/ingest",
-            "event_count": result.accepted,
-            "status_code": 200,
-            "latency_ms": 0,
-        }
-    )
+    request.state.event_count = result.accepted
     return result
 
 

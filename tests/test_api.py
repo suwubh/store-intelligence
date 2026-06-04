@@ -76,11 +76,11 @@ class TestIngest:
 
     def test_sample_track_ids_link_to_entry_tokens(self, client, ingest_helper):
         """Full sample file: track_id rows must not inflate visitor count vs id_tokens."""
-        from pathlib import Path
+        import pathlib
         import json
 
-        path = Path("dataset/events/sample_events.jsonl")
-        events = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+        _SAMPLE_EVENTS_PATH = pathlib.Path(__file__).parent.parent / "dataset" / "events" / "sample_events.jsonl"
+        events = [json.loads(line) for line in _SAMPLE_EVENTS_PATH.read_text(encoding="utf-8").splitlines() if line.strip()]
         r = ingest_helper(client, events)
         assert r.status_code == 200
         assert r.json()["accepted"] == len(events)
@@ -211,6 +211,29 @@ class TestIngest:
         assert txn.timestamp.tzinfo is None
         assert txn.timestamp.hour == 14
         assert txn.timestamp.minute == 38
+
+    def test_reentry_does_not_inflate_entry_count_in_funnel(self, client, make_event_helper, ingest_helper):
+        """A REENTRY event must not add to the unique visitor count in the funnel Entry stage."""
+        import uuid
+        vis = f"VIS_{uuid.uuid4().hex[:6]}"
+        ingest_helper(client, [
+            make_event_helper(event_type="ENTRY", visitor_id=vis),
+            make_event_helper(event_type="EXIT", visitor_id=vis),
+            make_event_helper(event_type="REENTRY", visitor_id=vis),
+        ])
+        funnel = client.get("/stores/ST1008/funnel").json()
+        assert funnel["stages"][0]["count"] == 1
+
+    def test_all_staff_metrics_does_not_crash(self, client, make_event_helper, ingest_helper):
+        """An all-staff clip produces valid metrics with 0 visitors, not an error."""
+        events = [make_event_helper(event_type="ENTRY", is_staff=True) for _ in range(10)]
+        ingest_helper(client, events)
+        r = client.get("/stores/ST1008/metrics")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["unique_visitors"] == 0
+        assert data["conversion_rate"] == 0.0
+        assert data["abandonment_rate"] == 0.0
 
 
 class TestHealth:

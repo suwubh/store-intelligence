@@ -1,19 +1,19 @@
 # Store Intelligence API
 
-End-to-end retail analytics from anonymised CCTV footage: clips under `dataset/clips/Store 1` and `Store 2` become structured events, events are ingested into a FastAPI service, and the API exposes live store metrics, funnel, heatmap, anomalies, and health.
+Store Intelligence API provides end-to-end retail analytics from anonymised CCTV footage. The system processes raw clips to extract structured behavioural events, ingests these events into a real-time FastAPI service, and exposes core store metrics, conversion funnels, heatmaps, anomaly alerts, and system health status.
 
 Each store folder includes:
 
 - CCTV clips (entry, floor/zone, billing)
-- `store_layout.json` — camera `source_file` map + zone polygons (auto-generated; refine as needed)
-- `*layout*.png` — floor plan reference image
+- `store_layout.json` — A camera `source_file` map and zone definitions.
+- `*layout*.png` — Floor plan reference image.
 
-Store IDs used by the API:
+Store IDs mapped by the API:
 
-| Clip folder | `store_id`   |
-|-------------|--------------|
-| Store 1     | `ST1008`     |
-| Store 2     | `ST1076`     |
+| Clip Folder | API `store_id` |
+|-------------|----------------|
+| Store 1     | `ST1008`       |
+| Store 2     | `ST1076`       |
 
 ## Quick Start
 
@@ -23,14 +23,13 @@ python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
 
-# 2. Validate datasets (Store 1 / Store 2 + POS + sample events)
+# 2. Validate datasets
 python pipeline/validate_dataset.py --dataset dataset
 
 # 3. Start the API
 docker compose up --build
 
 # 4. Ingest pre-generated pipeline events (ST1008 — Store 1 clips)
-#    This step is required for metrics/funnel/heatmap to show real data.
 #    Run from the project root after "docker compose up":
 python -c "
 import json, urllib.request, pathlib
@@ -42,7 +41,7 @@ for p in sorted(pathlib.Path('dataset/events').glob('ST1008_*.jsonl')):
     print(p.name, urllib.request.urlopen(req).read().decode())
 "
 
-# 5. Ingest updated sample events (ST1076 demo schema)
+# 5. Ingest sample events (ST1076 demo schema)
 python -c "import json, urllib.request; events=[json.loads(l) for l in open('dataset/events/sample_events.jsonl') if l.strip()]; req=urllib.request.Request('http://localhost:8000/events/ingest', json.dumps({'events': events}).encode(), {'Content-Type':'application/json'}, method='POST'); print(urllib.request.urlopen(req).read().decode())"
 
 # 6. Query metrics
@@ -50,18 +49,22 @@ curl http://localhost:8000/stores/ST1008/metrics
 curl http://localhost:8000/stores/ST1076/funnel
 ```
 
-> **Note on health status:** The `/health` endpoint reports `"degraded"` when the latest event timestamp is more than 10 minutes old. Since the pre-generated events in `dataset/events/` are from April 2026, the feed will show as stale after a fresh ingest. This is correct behaviour — the system is designed for real-time clips. Re-run the pipeline against live clips (`run_pipeline.py`) to get a live feed. The `last_event_timestamp` field in the health response shows when data was recorded; `event_count_last_hour` shows recent API activity.
+> **Note on conversion rate with pre-generated events:** The events in `dataset/events/` were generated with a hardcoded UTC anchor (`2026-04-10T20:00:00Z`) that does not overlap with the provided POS transaction window. As a result, `conversion_rate` will show as 0.0 when ingesting these pre-generated files. To see non-zero conversions, run the detection pipeline against the actual CCTV clips with `python run_pipeline.py --store-folder "Store 1" --api-url http://localhost:8000`. The OCR-based timestamp extraction will align events to the correct wall-clock time.
+
+> **Note on health status:** The `/health` endpoint reports `"degraded"` when the latest event timestamp exceeds 10 minutes in age. Since the pre-generated events in `dataset/events/` date back to April 2026, the feed will register as stale after a fresh ingest. This design strictly accommodates real-time feeds. Running the pipeline against live clips (`run_pipeline.py`) restores a live status. The `last_event_timestamp` field indicates when data was recorded, while `event_count_last_hour` reflects recent API activity.
 
 ## Raw Clip Processing
 
+The detection pipeline processes video clips and emits JSONL events. It links camera-local tracks to active entry sessions by processing entry cameras first, followed by floor and billing cameras.
+
 ```powershell
-# One store (layout is dataset/clips/Store 1/store_layout.json; emits ST1008)
+# Process a single store
 python run_pipeline.py --store-folder "Store 1"
 
-# Both stores
+# Process all stores
 python run_pipeline.py --all-stores
 
-# Process + ingest into running API
+# Process and ingest directly into the running API
 python run_pipeline.py --store-folder "Store 1" --api-url http://localhost:8000
 ```
 
@@ -71,9 +74,9 @@ Windows wrapper:
 pipeline\run.bat --store-folder "Store 1" --api-url http://localhost:8000
 ```
 
-Events are written to `dataset/events/<store_id>_<camera>_events.jsonl`. The runner processes entry cameras first, then floor/zone cameras, then billing cameras so API ingestion can link camera-local tracks to the active entry sessions.
+Events are saved to `dataset/events/<store_id>_<camera>_events.jsonl`.
 
-Regenerate layout JSON from clips (resolutions + filename → camera roles):
+To regenerate the layout JSON mapping (resolutions and filename-to-camera roles):
 
 ```powershell
 python -c "from pathlib import Path; from pipeline.layout_builder import write_store_layout; write_store_layout(Path('dataset/clips/Store 1'))"
@@ -92,19 +95,21 @@ python -c "from pathlib import Path; from pipeline.layout_builder import write_s
 
 ## Event Compatibility
 
-The detection pipeline emits the **canonical uppercase schema** (`ENTRY`, `ZONE_ENTER`, …). The API also accepts the **updated sample-event schema** (`entry`, `zone_entered`, `queue_completed`, `id_token`, `store_code`, `track_id`). Rows without `event_id` get deterministic UUIDv5 IDs. `track_id` 101–103 link to `id_token` values when ingesting the bundled sample file.
+The API supports both the canonical uppercase schema emitted by the detection pipeline (e.g., `ENTRY`, `ZONE_ENTER`) and the lowercase sample-event schema (e.g., `entry`, `zone_entered`, `queue_completed`). Missing `event_id` attributes are resolved deterministically using UUIDv5. When ingesting the bundled sample file, `track_id` values 101–103 link securely to corresponding `id_token` values.
 
 ## POS Correlation
 
-`dataset/pos_transactions.csv` uses line-item rows aggregated by `order_id`. Conversion: a visitor with a billing visit at time **B** is converted if a POS transaction exists with timestamp **T** where **B ≤ T ≤ B + 5 minutes** (challenge rule).
+The dataset provided at `dataset/pos_transactions.csv` uses line-item rows aggregated by `order_id`. A visitor with a billing visit at time **B** qualifies as a converted visitor if a corresponding POS transaction exists at time **T**, where **B ≤ T ≤ B + 5 minutes**.
 
-Store IDs are normalized at ingest/query time. `Store 1` and `ST_STORE_1` map to `ST1008`; `Store 2`, `ST_STORE_2`, and `store_1076` map to `ST1076`. Set `POS_TIMEZONE_OFFSET_MINUTES` if POS and event timestamps use different bases.
+Store IDs are normalized during ingest and query. `Store 1` and `ST_STORE_1` map to `ST1008`; `Store 2`, `ST_STORE_2`, and `store_1076` map to `ST1076`. The system uses `POS_TIMEZONE_OFFSET_MINUTES` to reconcile any time base discrepancies between POS data and event timestamps.
 
-## Calibration Notes
+## Calibration and Detection Profiles
 
-The bundled `store_layout.json` files contain runnable polygons for every camera, but the floor zones are coarse frame-space regions. For stronger zone scoring, refine the polygons against the layout PNG and visible camera frames before final submission. Staff profiles are store-specific: Store 1 uses black-uniform detection; Store 2 uses a pink-top/black-bottom profile.
+The bundled `store_layout.json` files contain functional polygons for every camera, but floor zones are approximated in frame-space. For precise zone scoring, these polygons can be calibrated against the layout PNG and visible camera frames. Staff detection profiles are store-specific: Store 1 uses a black-uniform profile, while Store 2 relies on a pink-top and black-bottom profile.
 
 ## Tests
+
+Execute the test suite to verify pipeline functionality and API integrity:
 
 ```powershell
 pip install -r requirements.txt
@@ -118,7 +123,7 @@ app/                  FastAPI, ingestion, metrics, funnel, heatmap, anomalies
 pipeline/             Detection, layout_builder, validate_dataset, runners
 dataset/clips/        Store 1, Store 2 (clips + per-store store_layout.json)
 dataset/events/       Emitted JSONL + sample_events.jsonl
-DESIGN.md             Architecture and AI-assisted decisions
+DESIGN.md             Architecture and design decisions
 CHOICES.md            Engineering decisions
 docs/DESIGN.md        Copy of architecture notes
 docs/CHOICES.md       Copy of engineering decisions

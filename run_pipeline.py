@@ -89,6 +89,22 @@ def process_store(store_dir: Path, dataset: Path, device: str, api_url: str | No
     total_events = 0
     cam_counts: dict[str, int] = {}
 
+    if not clip_start and videos:
+        from pipeline.detect import get_clip_start_time
+        print("  Extracting baseline clip-start for store...")
+        for clip_path in videos:
+            try:
+                dt = get_clip_start_time(None, str(clip_path))
+                if dt:
+                    clip_start = dt.isoformat()
+                    print(f"  → Found baseline clip-start: {clip_start} from {clip_path.name}")
+                    break
+            except ValueError:
+                continue
+        if not clip_start:
+            print(f"  ERROR: Could not detect clip-start for {store_id}. Aborting.")
+            return 0
+
     for clip_path in videos:
         cam_id = source_map.get(clip_path.name.lower())
         if not cam_id:

@@ -23,6 +23,9 @@ class EventMetadata(BaseModel):
     queue_depth: Optional[int] = None
     sku_zone: Optional[str] = None
     session_seq: int = 1
+    group_id: Optional[str] = None
+    group_size: Optional[int] = None
+    is_face_hidden: Optional[bool] = None
 
 
 class StoreEvent(BaseModel):
@@ -53,6 +56,7 @@ class StoreEvent(BaseModel):
         data.setdefault("event_id", _stable_event_id(raw))
         data["store_id"] = normalize_store_id(data.get("store_id") or data.get("store_code"))
         data.setdefault("visitor_id", _normalise_visitor_id(data))
+        data.setdefault("camera_id", data.get("camera_id") or "UNKNOWN")
         data.setdefault("timestamp", _normalise_timestamp(data))
         data.setdefault("zone_id", data.get("zone_id"))
         data.setdefault("dwell_ms", _normalise_dwell_ms(data))
@@ -63,6 +67,9 @@ class StoreEvent(BaseModel):
         metadata.setdefault("queue_depth", data.get("queue_depth") or data.get("queue_position_at_join"))
         metadata.setdefault("sku_zone", data.get("sku_zone") or data.get("zone_name") or data.get("zone_type"))
         metadata.setdefault("session_seq", int(data.get("session_seq") or 1))
+        metadata.setdefault("group_id", data.get("group_id"))
+        metadata.setdefault("group_size", data.get("group_size"))
+        metadata.setdefault("is_face_hidden", data.get("is_face_hidden"))
         data["metadata"] = metadata
 
         return data
@@ -207,7 +214,6 @@ class AnomalyType(str, Enum):
     BILLING_QUEUE_SPIKE = "BILLING_QUEUE_SPIKE"
     CONVERSION_DROP = "CONVERSION_DROP"
     DEAD_ZONE = "DEAD_ZONE"
-    STALE_FEED = "STALE_FEED"
 
 
 class Anomaly(BaseModel):

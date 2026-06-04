@@ -29,17 +29,19 @@ def get_health(db: Session) -> HealthResponse:
             )
         ).scalar()
 
-        count_last_hour = db.execute(
-            select(func.count()).where(
-                and_(
-                    EventRecord.store_id == store_id,
-                    EventRecord.timestamp >= hour_ago,
+        last_ingest = LAST_INGEST_TIMES.get(store_id)
+        count_last_hour = 0
+        if last_ingest and (now - last_ingest).total_seconds() < 3600:
+            count_last_hour = db.execute(
+                select(func.count()).where(
+                    and_(
+                        EventRecord.store_id == store_id,
+                        EventRecord.timestamp >= (last_ingest - timedelta(hours=1)),
+                    )
                 )
-            )
-        ).scalar() or 0
+            ).scalar() or 0
 
         stale = (last_ts is None) or (last_ts < stale_cutoff)
-        last_ingest = LAST_INGEST_TIMES.get(store_id)
 
         store_statuses.append(StoreHealthStatus(
             store_id=store_id,

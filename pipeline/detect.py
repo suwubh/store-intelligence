@@ -46,6 +46,7 @@ def parse_args():
     p.add_argument("--layout", default=None, help="Path to store_layout.json (default: beside the video)")
     p.add_argument("--output", default="dataset/events.jsonl")
     p.add_argument("--clip-start", default=None)
+    p.add_argument("--use-ocr", action="store_true", help="Attempt to extract timestamp using OCR")
     p.add_argument("--api-url", default=None)
     p.add_argument("--conf", type=float, default=0.20)
     p.add_argument("--device", default="auto", help="Execution device: auto/cpu/cuda")
@@ -103,41 +104,38 @@ def _extract_timestamp_from_frame(frame) -> datetime | None:
         return None
 
 
-def get_clip_start_time(clip_start_arg, video_path):
+def get_clip_start_time(clip_start_arg, video_path, use_ocr):
     """
     Determine the wall-clock start time of a video clip.
     Priority:
       1. Explicit --clip-start argument
-      2. Timestamp burned into the first frame by the camera (auto-detected)
-      3. Hardcoded fallback per store (last resort)
+      2. Timestamp burned into the first frame by the camera (auto-detected if --use-ocr is passed)
     """
     if clip_start_arg:
         return datetime.fromisoformat(clip_start_arg.replace("Z", "+00:00"))
 
-    # Try reading timestamp from the first frame of the video
-    cap = cv2.VideoCapture(video_path)
-    detected = None
-    if cap.isOpened():
-        # Try first 5 frames in case frame 0 is dark/blank
-        for _ in range(5):
-            ret, frame = cap.read()
-            if not ret:
-                break
-            detected = _extract_timestamp_from_frame(frame)
-            if detected:
-                logger.info(f"Auto-detected clip start from frame: {detected.isoformat()}")
-                break
-        cap.release()
+    if use_ocr:
+        # Try reading timestamp from the first frame of the video
+        cap = cv2.VideoCapture(video_path)
+        detected = None
+        if cap.isOpened():
+            # Try first 5 frames in case frame 0 is dark/blank
+            for _ in range(5):
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                detected = _extract_timestamp_from_frame(frame)
+                if detected:
+                    logger.info(f"Auto-detected clip start from frame: {detected.isoformat()}")
+                    break
+            cap.release()
 
-    if detected:
-        return detected
+        if detected:
+            return detected
+            
+        logger.warning(f"Could not auto-detect timestamp from {Path(video_path).name} using OCR.")
 
-    # Hardcoded fallback — only reached if frame OCR fails
-    logger.warning(f"Could not auto-detect timestamp from {Path(video_path).name}, using fallback")
-    video_name = Path(video_path).name.lower()
-    if "cam" in video_name:
-        return datetime(2026, 4, 10, 20, 0, 0, tzinfo=timezone.utc)
-    return datetime(2026, 3, 8, 13, 39, 0, tzinfo=timezone.utc)
+    raise ValueError(f"Could not determine timestamp from {Path(video_path).name}. Please provide --clip-start.")
 
 
 def frame_to_timestamp(clip_start, frame_idx, fps):
@@ -231,21 +229,16 @@ def run_pipeline(args):
     # -----------------------------------------------------------------
     runtime_device = resolve_device(args.device)
     use_gpu = runtime_device == "cuda"
-    logger.info(f"Initializing EasyOCR Engine (GPU Support = {use_gpu})...")
-    try:
-        ocr_reader = easyocr.Reader(['en'], gpu=use_gpu)
-        dev_str = ocr_reader.device if isinstance(ocr_reader.device, str) else getattr(ocr_reader.device, "type", str(ocr_reader.device))
-        logger.info(f"EasyOCR successfully mapped to execution target: [{dev_str.upper()}]")
-    except Exception as e:
-        logger.warning(f"GPU hardware initialization failure for OCR: {e}. Falling back to CPU mode.")
-        ocr_reader = easyocr.Reader(['en'], gpu=False)
-        runtime_device = "cpu"
-
-    # Trigger memory allocation warmup loop so frame 1 runs instantly during judging evaluation
-    logger.info("Warming up Deep Learning OCR engine weights...")
-    dummy_frame = np.zeros((100, 200, 3), dtype=np.uint8)
-    _ = ocr_reader.readtext(dummy_frame, detail=0)
-    logger.info("OCR Core Engine is hot and ready for streaming inference!")
+    if args.use_ocr:
+        logger.info(f"Initializing EasyOCR Engine (GPU Support = {use_gpu})...")
+        try:
+            ocr_reader = easyocr.Reader(['en'], gpu=use_gpu)
+            dev_str = ocr_reader.device if isinstance(ocr_reader.device, str) else getattr(ocr_reader.device, "type", str(ocr_reader.device))
+            logger.info(f"EasyOCR successfully mapped to execution target: [{dev_str.upper()}]")
+        except Exception as e:
+            logger.warning(f"GPU hardware initialization failure for OCR: {e}. Falling back to CPU mode.")
+            ocr_reader = easyocr.Reader(['en'], gpu=False)
+            runtime_device = "cpu"
 
     logger.info(f"Loading YOLOv8s on {runtime_device}")
     model = YOLO("yolov8s.pt")
@@ -269,7 +262,7 @@ def run_pipeline(args):
 
     fps = cap.get(cv2.CAP_PROP_FPS) or 15.0
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    clip_start = get_clip_start_time(args.clip_start, args.video)
+    clip_start = get_clip_start_time(args.clip_start, args.video, args.use_ocr)
 
     is_entry_camera = "ENTRY" in args.camera.upper()
     entry_line_ratio = get_entry_line_ratio(args.layout, args.camera)

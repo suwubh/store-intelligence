@@ -142,3 +142,71 @@ def test_dataset_validator_generates_layout_for_temp_dataset(tmp_path, monkeypat
     assert validate_dataset(str(dataset)) is True
     generated = json.loads((store_dir / "store_layout.json").read_text(encoding="utf-8"))
     assert generated["store_id"] == "ST1008"
+
+
+def test_resolve_device():
+    from pipeline.detect import resolve_device
+    assert resolve_device("cpu") == "cpu"
+    assert resolve_device("auto") in ["cpu", "cuda"]
+
+def test_frame_to_timestamp():
+    from pipeline.detect import frame_to_timestamp
+    start = datetime(2026, 3, 8, 12, 0, tzinfo=timezone.utc)
+    ts = frame_to_timestamp(start, 30, 15.0)
+    import datetime as dt
+    assert ts == start + dt.timedelta(seconds=2)
+
+def test_is_storeroom_camera(tmp_path):
+    from pipeline.detect import is_storeroom_camera
+    layout = {"store_id": "ST1008", "cameras": {"CAM_1": {"exclude_from_metrics": True}}}
+    path = tmp_path / "layout.json"
+    path.write_text(json.dumps(layout), encoding="utf-8")
+    assert is_storeroom_camera(str(path), "CAM_1") is True
+    assert is_storeroom_camera(str(path), "CAM_2") is False
+
+def test_get_entry_line_ratio(tmp_path):
+    from pipeline.detect import get_entry_line_ratio
+    layout = {"store_id": "ST1008", "cameras": {"CAM_1": {"entry_line_y_ratio": 0.5}}}
+    path = tmp_path / "layout.json"
+    path.write_text(json.dumps(layout), encoding="utf-8")
+    assert get_entry_line_ratio(str(path), "CAM_1") == 0.5
+    assert get_entry_line_ratio(str(path), "CAM_2") == 0.40
+
+def test_get_entry_inward_direction(tmp_path):
+    from pipeline.detect import get_entry_inward_direction
+    layout = {"store_id": "ST1008", "cameras": {"CAM_1": {"entry_inward_direction": "up"}}}
+    path = tmp_path / "layout.json"
+    path.write_text(json.dumps(layout), encoding="utf-8")
+    assert get_entry_inward_direction(str(path), "CAM_1") == "up"
+    assert get_entry_inward_direction(str(path), "CAM_2") == "down"
+
+def test_get_clip_start_time_with_arg():
+    from pipeline.detect import get_clip_start_time
+    ts = get_clip_start_time("2026-03-08T12:00:00Z", "dummy.mp4", use_ocr=False)
+    assert ts == datetime(2026, 3, 8, 12, 0, 0, tzinfo=timezone.utc)
+
+def test_get_clip_start_time_no_ocr(monkeypatch):
+    from pipeline.detect import get_clip_start_time
+    import cv2
+    import pytest
+    class DummyCap:
+        def isOpened(self): return True
+        def read(self): return False, None
+        def release(self): pass
+
+    monkeypatch.setattr(cv2, "VideoCapture", lambda x: DummyCap())
+    with pytest.raises(ValueError):
+        get_clip_start_time(None, "dummy.mp4", use_ocr=True)
+
+def test_extract_timestamp_from_frame(monkeypatch):
+    import pipeline.detect
+    from unittest.mock import MagicMock
+    import numpy as np
+    
+    mock_reader = MagicMock()
+    mock_reader.readtext.return_value = ["10/04/2026", "20:00:00"]
+    pipeline.detect.ocr_reader = mock_reader
+    
+    frame = np.zeros((100, 100, 3), dtype=np.uint8)
+    dt = pipeline.detect._extract_timestamp_from_frame(frame)
+    assert dt == datetime(2026, 4, 10, 20, 0, 0, tzinfo=timezone.utc)

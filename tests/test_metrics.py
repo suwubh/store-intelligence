@@ -75,6 +75,19 @@ class TestMetrics:
         assert r.status_code == 200
         assert r.json()["current_queue_depth"] == 3
 
+    def test_abandonment_rate_calculation(self, client, make_event_helper, ingest_helper):
+        """Abandonment rate = billing visitors who didn't convert / billing visitors."""
+        vis1, vis2 = f"VIS_{uuid.uuid4().hex[:6]}", f"VIS_{uuid.uuid4().hex[:6]}"
+        ingest_helper(client, [
+            make_event_helper(event_type="ENTRY", visitor_id=vis1),
+            make_event_helper(event_type="BILLING_QUEUE_JOIN", visitor_id=vis1, zone_id="BILLING", queue_depth=1),
+            make_event_helper(event_type="ENTRY", visitor_id=vis2),
+            make_event_helper(event_type="BILLING_QUEUE_JOIN", visitor_id=vis2, zone_id="BILLING", queue_depth=2),
+        ])
+        r = client.get("/stores/ST1008/metrics")
+        data = r.json()
+        assert data["abandonment_rate"] == 1.0
+
 
 class TestFunnel:
     def test_funnel_structure(self, client):
@@ -148,3 +161,23 @@ class TestHeatmap:
         assert r.status_code == 200
         for zone in r.json()["zones"]:
             assert zone["data_confidence"] == False
+
+    def test_heatmap_confidence_boundary(self, client, make_event_helper, ingest_helper):
+        """Exactly 20 customer sessions should set data_confidence=True; 19 should not."""
+        events = []
+        for _ in range(19):
+            vis = f"VIS_{uuid.uuid4().hex[:6]}"
+            events.append(make_event_helper(event_type="ENTRY", visitor_id=vis))
+            events.append(make_event_helper(event_type="ZONE_ENTER", visitor_id=vis, zone_id="SKINCARE"))
+        ingest_helper(client, events)
+        r = client.get("/stores/ST1008/heatmap")
+        assert all(not z["data_confidence"] for z in r.json()["zones"])
+
+        # Add one more to reach exactly 20
+        vis = f"VIS_{uuid.uuid4().hex[:6]}"
+        ingest_helper(client, [
+            make_event_helper(event_type="ENTRY", visitor_id=vis),
+            make_event_helper(event_type="ZONE_ENTER", visitor_id=vis, zone_id="SKINCARE"),
+        ])
+        r2 = client.get("/stores/ST1008/heatmap")
+        assert all(z["data_confidence"] for z in r2.json()["zones"])

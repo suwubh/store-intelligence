@@ -23,7 +23,7 @@ def build_engine(url: str = DATABASE_URL):
     if url.startswith("sqlite"):
         engine = create_engine(
             url,
-            connect_args={"check_same_thread": False},
+            connect_args={"check_same_thread": False, "timeout": 15},
             poolclass=StaticPool,
         )
         event.listen(engine, "connect", set_sqlite_pragma)
