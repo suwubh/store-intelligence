@@ -15,6 +15,15 @@ Store IDs mapped by the API:
 | Store 1     | `ST1008`       |
 | Store 2     | `ST1076`       |
 
+## Deliverables
+
+| File | Location |
+|------|----------|
+| Event log (JSONL) | `dataset/events` (per‑camera files) |
+| Design doc | `DESIGN.md` |
+| Choices doc | `CHOICES.md` |
+
+
 ## Quick Start
 
 ```powershell
