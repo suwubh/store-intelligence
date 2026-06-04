@@ -5,6 +5,7 @@ from sqlalchemy import select, func, and_
 
 from app.database import EventRecord
 from app.models import HealthResponse, StoreHealthStatus
+from app.ingestion import LAST_INGEST_TIMES
 
 START_TIME = time.time()
 STALE_FEED_MINUTES = 10
@@ -38,12 +39,14 @@ def get_health(db: Session) -> HealthResponse:
         ).scalar() or 0
 
         stale = (last_ts is None) or (last_ts < stale_cutoff)
+        last_ingest = LAST_INGEST_TIMES.get(store_id)
 
         store_statuses.append(StoreHealthStatus(
             store_id=store_id,
             last_event_timestamp=last_ts,
             stale_feed=stale,
             event_count_last_hour=count_last_hour,
+            last_ingest_at=last_ingest,
         ))
 
     overall = "degraded" if any(s.stale_feed for s in store_statuses) else "ok"

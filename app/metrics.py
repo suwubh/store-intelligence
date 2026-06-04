@@ -16,8 +16,8 @@ def _billing_clause():
     )
 
 
-def get_store_metrics(store_id: str, db: Session) -> StoreMetrics:
-    store_id = normalize_store_id(store_id) or store_id
+def get_store_metrics(id: str, db: Session) -> StoreMetrics:
+    store_id = normalize_store_id(id) or id
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     day_start, day_end = get_day_window(db, store_id)
 
@@ -95,7 +95,7 @@ def get_store_metrics(store_id: str, db: Session) -> StoreMetrics:
         )
     ).scalar() or 0
 
-    abandon_count = db.execute(
+    explicit_abandon_count = db.execute(
         select(func.count(distinct(EventRecord.visitor_id))).where(
             and_(
                 EventRecord.store_id == store_id,
@@ -106,6 +106,26 @@ def get_store_metrics(store_id: str, db: Session) -> StoreMetrics:
             )
         )
     ).scalar() or 0
+
+    session_abandon_filter = and_(
+        SessionRecord.store_id == store_id,
+        SessionRecord.is_staff == False,
+        or_(
+            and_(SessionRecord.entry_time.isnot(None), SessionRecord.entry_time >= day_start, SessionRecord.entry_time < day_end),
+            and_(SessionRecord.billing_at.isnot(None), SessionRecord.billing_at >= day_start, SessionRecord.billing_at < day_end),
+        ),
+    )
+    session_abandon_count = db.execute(
+        select(func.count(distinct(SessionRecord.visitor_id))).where(
+            and_(
+                session_abandon_filter,
+                SessionRecord.visited_billing == True,
+                SessionRecord.converted == False,
+            )
+        )
+    ).scalar() or 0
+
+    abandon_count = max(explicit_abandon_count, session_abandon_count)
 
     abandonment_rate = (abandon_count / billing_visitors) if billing_visitors > 0 else 0.0
 

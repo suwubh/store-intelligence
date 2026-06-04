@@ -61,3 +61,16 @@ def test_store1_staff_profile_detects_black_uniform():
     frame[30:70, 20:60] = np.array([10, 10, 10], dtype=np.uint8)
 
     assert detector.is_staff(frame, [20, 10, 60, 90])
+
+
+def test_staff_detector_store_id_normalization():
+    # Pass unnormalized Store 2 IDs
+    for sid in ["STORE_BLR_002", "store_blr_002", "STORE 2", "store_2", "ST1076"]:
+        detector = StaffDetector(store_id=sid)
+        assert detector.store_id == "ST1076"
+
+    # Pass unnormalized Store 1 IDs
+    for sid in ["STORE_BLR_001", "store_blr_001", "STORE 1", "store_1", "ST1008"]:
+        detector = StaffDetector(store_id=sid)
+        assert detector.store_id == "ST1008"
+

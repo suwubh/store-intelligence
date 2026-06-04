@@ -55,8 +55,11 @@ async def lifespan(app: FastAPI):
     pos_path = os.getenv("POS_CSV_PATH", "dataset/pos_transactions.csv")
     if os.path.exists(pos_path):
         from app.database import SessionLocal
-        with SessionLocal() as db:
-            load_pos_transactions(pos_path, db)
+        try:
+            with SessionLocal() as db:
+                load_pos_transactions(pos_path, db)
+        except Exception as e:
+            logger.error("Failed to auto-load POS transactions during startup: %s", e)
     yield
 
 
@@ -88,7 +91,10 @@ async def logging_middleware(request: Request, call_next):
     response = await call_next(request)
 
     latency_ms = round((time.perf_counter() - start) * 1000, 2)
-    store_id = request.path_params.get("store_id", "-")
+    path_parts = request.url.path.strip("/").split("/")
+    store_id = "-"
+    if len(path_parts) >= 2 and path_parts[0] == "stores":
+        store_id = path_parts[1]
 
     logger.info(
         "request",
@@ -160,40 +166,40 @@ def ingest(
     return result
 
 
-@app.get("/stores/{store_id}/metrics", response_model=StoreMetrics)
-def metrics(store_id: str, db: Session = Depends(get_db)):
+@app.get("/stores/{id}/metrics", response_model=StoreMetrics)
+def metrics(id: str, db: Session = Depends(get_db)):
     """
     Real-time store metrics for today.
     Excludes staff. Handles zero-traffic correctly.
     """
-    return get_store_metrics(store_id, db)
+    return get_store_metrics(id, db)
 
 
-@app.get("/stores/{store_id}/funnel", response_model=FunnelResponse)
-def funnel(store_id: str, db: Session = Depends(get_db)):
+@app.get("/stores/{id}/funnel", response_model=FunnelResponse)
+def funnel(id: str, db: Session = Depends(get_db)):
     """
     Conversion funnel: Entry → Zone Visit → Billing Queue → Purchase.
     Session-level — re-entries do not double-count a visitor.
     """
-    return get_store_funnel(store_id, db)
+    return get_store_funnel(id, db)
 
 
-@app.get("/stores/{store_id}/heatmap", response_model=HeatmapResponse)
-def heatmap(store_id: str, db: Session = Depends(get_db)):
+@app.get("/stores/{id}/heatmap", response_model=HeatmapResponse)
+def heatmap(id: str, db: Session = Depends(get_db)):
     """
     Zone visit frequency + avg dwell, normalised 0–100.
     data_confidence=False if fewer than 20 sessions in window.
     """
-    return get_store_heatmap(store_id, db)
+    return get_store_heatmap(id, db)
 
 
-@app.get("/stores/{store_id}/anomalies", response_model=AnomaliesResponse)
-def anomalies(store_id: str, db: Session = Depends(get_db)):
+@app.get("/stores/{id}/anomalies", response_model=AnomaliesResponse)
+def anomalies(id: str, db: Session = Depends(get_db)):
     """
     Active anomalies: queue spike, conversion drop, dead zones.
     Severity: INFO / WARN / CRITICAL with suggested_action.
     """
-    return get_anomalies(store_id, db)
+    return get_anomalies(id, db)
 
 
 @app.get("/health", response_model=HealthResponse)

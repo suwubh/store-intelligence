@@ -1,5 +1,5 @@
 # PROMPT: Generate unit tests for the ingestion and health endpoints of a FastAPI retail intelligence API. Test happy paths, batch size limit constraints of 500, partial ingestion errors on malformed schemas, and stale feed alerts on health monitoring when last event lag exceeds 10 minutes.
-# CHANGES MADE: Extracted common fixtures to conftest.py. Handled mock datetime offsets to simulate event staleness correctly.
+# CHANGES MADE: Extracted common fixtures to conftest.py. Handled mock datetime offsets to simulate event staleness correctly. Added test for dynamic demographic track alias matching.
 
 import pytest
 from datetime import datetime, timedelta, timezone
@@ -167,6 +167,51 @@ class TestIngest:
         assert txn is not None
         assert round(txn.basket_value, 2) == 794.10
 
+    def test_dynamic_demographic_track_alias_resolution(self, client, ingest_helper):
+        events = [
+            {
+                "event_type": "entry",
+                "id_token": "ID_DYN_001",
+                "store_code": "ST1008",
+                "camera_id": "CAM_ENTRY_01",
+                "event_timestamp": "2026-03-08T18:10:00.000000",
+                "is_staff": False,
+                "gender_pred": "F",
+                "age_pred": 35,
+            },
+            {
+                "event_type": "zone_entered",
+                "track_id": 999,
+                "store_id": "ST1008",
+                "camera_id": "CAM_FLOOR_01",
+                "zone_id": "SKINCARE",
+                "event_time": "2026-03-08T18:10:30.000000",
+                "gender": "F",
+                "age": 36,
+            }
+        ]
+        r = ingest_helper(client, events)
+        assert r.status_code == 200
+        assert r.json()["accepted"] == 2
+        
+        funnel = client.get("/stores/ST1008/funnel").json()
+        assert funnel["stages"][0]["count"] == 1
+        assert funnel["stages"][1]["count"] == 1
+
+    def test_old_pos_format_timezone_normalization(self, tmp_path, db_session):
+        pos_file = tmp_path / "pos_old.csv"
+        pos_file.write_text(
+            "transaction_id,timestamp,store_id,basket_value_inr\n"
+            "TXN_OLD_1,2026-03-03T14:38:12Z,ST1008,1240.00\n",
+            encoding="utf-8"
+        )
+        load_pos_transactions(str(pos_file), db_session)
+        txn = db_session.get(POSTransaction, "TXN_OLD_1")
+        assert txn is not None
+        assert txn.timestamp.tzinfo is None
+        assert txn.timestamp.hour == 14
+        assert txn.timestamp.minute == 38
+
 
 class TestHealth:
     def test_health_ok(self, client):
@@ -185,3 +230,30 @@ class TestHealth:
         for store in r.json()["stores"]:
             if store["store_id"] == "ST1008":
                 assert store["stale_feed"] == True
+
+    def test_store_blr_002_normalization_and_id_param(self, client, make_event_helper, ingest_helper):
+        event = make_event_helper(store_id="ST1076", event_type="ENTRY")
+        ingest_helper(client, [event])
+
+        # Query metrics using STORE_BLR_002 (uppercase)
+        r = client.get("/stores/STORE_BLR_002/metrics")
+        assert r.status_code == 200
+        assert r.json()["store_id"] == "ST1076"
+        assert r.json()["unique_visitors"] == 1
+
+        # Query funnel using store_blr_002 (lowercase)
+        r2 = client.get("/stores/store_blr_002/funnel")
+        assert r2.status_code == 200
+        assert r2.json()["store_id"] == "ST1076"
+
+    def test_last_ingest_at_tracked(self, client, make_event_helper, ingest_helper):
+        # Fresh ingest
+        r_ingest = ingest_helper(client, [make_event_helper(store_id="ST1008")])
+        assert r_ingest.status_code == 200
+
+        r_health = client.get("/health")
+        assert r_health.status_code == 200
+        stores = r_health.json()["stores"]
+        st1008_status = next(s for s in stores if s["store_id"] == "ST1008")
+        assert st1008_status["last_ingest_at"] is not None
+

@@ -16,9 +16,19 @@ DEAD_ZONE_MINUTES = 30             # no visits in 30 min → anomaly
 STALE_FEED_MINUTES = 10
 
 
-def get_anomalies(store_id: str, db: Session) -> AnomaliesResponse:
-    store_id = normalize_store_id(store_id) or store_id
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+def get_anomalies(id: str, db: Session) -> AnomaliesResponse:
+    store_id = normalize_store_id(id) or id
+    
+    # Anchor anomalies calculations to the latest event timestamp for this store.
+    # This allows anomaly detection to work correctly on historical playback datasets.
+    latest_event_ts = db.execute(
+        select(func.max(EventRecord.timestamp)).where(EventRecord.store_id == store_id)
+    ).scalar()
+    if latest_event_ts:
+        now = latest_event_ts
+    else:
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        
     anomalies: list[Anomaly] = []
 
     anomalies.extend(_check_queue_spike(store_id, now, db))
@@ -73,7 +83,7 @@ def _check_conversion_drop(store_id: str, now: datetime, db: Session) -> list[An
                 SessionRecord.store_id == store_id,
                 SessionRecord.is_staff == False,
                 SessionRecord.entry_time >= day_start,
-                SessionRecord.entry_time < now,
+                SessionRecord.entry_time <= now,
             )
         )
     ).scalar() or 0
@@ -88,7 +98,7 @@ def _check_conversion_drop(store_id: str, now: datetime, db: Session) -> list[An
                     SessionRecord.store_id == store_id,
                     SessionRecord.is_staff == False,
                     SessionRecord.entry_time >= start,
-                    SessionRecord.entry_time < end,
+                    SessionRecord.entry_time <= end,
                 )
             )
         ).scalar() or 0
@@ -100,7 +110,7 @@ def _check_conversion_drop(store_id: str, now: datetime, db: Session) -> list[An
                     SessionRecord.store_id == store_id,
                     SessionRecord.is_staff == False,
                     SessionRecord.entry_time >= start,
-                    SessionRecord.entry_time < end,
+                    SessionRecord.entry_time <= end,
                     SessionRecord.converted == True,
                 )
             )

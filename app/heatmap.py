@@ -8,8 +8,8 @@ from app.store_ids import normalize_store_id
 MIN_SESSIONS_FOR_CONFIDENCE = 20
 
 
-def get_store_heatmap(store_id: str, db: Session) -> HeatmapResponse:
-    store_id = normalize_store_id(store_id) or store_id
+def get_store_heatmap(id: str, db: Session) -> HeatmapResponse:
+    store_id = normalize_store_id(id) or id
     day_start, day_end = get_day_window(db, store_id)
 
     total_sessions = db.execute(

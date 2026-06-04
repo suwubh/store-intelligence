@@ -128,15 +128,15 @@ def get_db():
 
 def get_day_window(db: Session, store_id: str) -> tuple[datetime, datetime]:
     """
-    Return (day_start, day_end) anchored to the earliest event for this store.
+    Return (day_start, day_end) anchored to the latest event for this store.
     Falls back to UTC today if no events exist yet.
     """
-    earliest = db.execute(
-        select(func.min(EventRecord.timestamp)).where(EventRecord.store_id == store_id)
+    latest = db.execute(
+        select(func.max(EventRecord.timestamp)).where(EventRecord.store_id == store_id)
     ).scalar()
 
-    if earliest:
-        day_start = earliest.replace(hour=0, minute=0, second=0, microsecond=0)
+    if latest:
+        day_start = latest.replace(hour=0, minute=0, second=0, microsecond=0)
         day_end = day_start + timedelta(days=1)
     else:
         now = datetime.now(timezone.utc).replace(tzinfo=None)

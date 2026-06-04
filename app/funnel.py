@@ -15,8 +15,8 @@ def _billing_clause():
     )
 
 
-def get_store_funnel(store_id: str, db: Session) -> FunnelResponse:
-    store_id = normalize_store_id(store_id) or store_id
+def get_store_funnel(id: str, db: Session) -> FunnelResponse:
+    store_id = normalize_store_id(id) or id
     day_start, day_end = get_day_window(db, store_id)
 
     store_customer_base = and_(
