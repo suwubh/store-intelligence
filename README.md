@@ -47,6 +47,10 @@ python -c "import json, urllib.request; events=[json.loads(l) for l in open('dat
 # 6. Query metrics
 curl http://localhost:8000/stores/ST1008/metrics
 curl http://localhost:8000/stores/ST1076/funnel
+
+# 7. View Live Dashboard (Part E)
+# Open this URL in your browser:
+# http://localhost:8000/
 ```
 
 > **Note on conversion rate with pre-generated events:** The events in `dataset/events/` were generated with a hardcoded UTC anchor (`2026-04-10T20:00:00Z`) that does not overlap with the provided POS transaction window. As a result, `conversion_rate` will show as 0.0 when ingesting these pre-generated files. To see non-zero conversions, run the detection pipeline against the actual CCTV clips with `python run_pipeline.py --store-folder "Store 1" --api-url http://localhost:8000`. The OCR-based timestamp extraction will align events to the correct wall-clock time.
