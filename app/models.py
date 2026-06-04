@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 import uuid
 import json
@@ -121,7 +121,7 @@ def _normalise_timestamp(data: dict[str, Any]) -> Any:
         or data.get("event_time")
         or data.get("queue_join_ts")
         or data.get("queue_exit_ts")
-        or datetime.utcnow().isoformat()
+        or datetime.now(timezone.utc).isoformat()
     )
 
 

@@ -1,22 +1,25 @@
 import csv
 import logging
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from pydantic import ValidationError
-from sqlalchemy import and_, select
+from sqlalchemy import and_, select, or_
 from sqlalchemy.orm import Session
 
 from app.database import EventRecord, POSTransaction, SessionRecord
-from app.models import IngestRequest, IngestResponse, StoreEvent
+from app.models import IngestRequest, IngestResponse, StoreEvent, _normalise_event_type
 from app.store_ids import normalize_store_id
 
 logger = logging.getLogger(__name__)
 
 BILLING_ZONES = {"BILLING", "BILLING_COUNTER", "BILLING_QUEUE", "CHECKOUT", "CASHIER"}
 CONVERSION_WINDOW_SECONDS = 300
-POS_TIMEZONE_OFFSET = timedelta(minutes=int(os.getenv("POS_TIMEZONE_OFFSET_MINUTES", "0")))
+POS_TIMEZONE_OFFSET = timedelta(minutes=int(os.getenv("POS_TIMEZONE_OFFSET_MINUTES", "330")))
 CROSS_CAMERA_LINK_WINDOW_SECONDS = 30 * 60
+
+# Track wall-clock time of most recent ingestion per store
+LAST_INGEST_TIMES: dict[str, datetime] = {}
 
 # Updated sample_events.jsonl: track_id → id_token (verified from resource file)
 SAMPLE_TRACK_ALIASES = {
@@ -36,6 +39,8 @@ def ingest_events(request: IngestRequest, db: Session) -> IngestResponse:
     camera_aliases: dict[str, str] = {}
 
     # First pass: learn id_token ↔ track_id links from the same batch
+    entries = []
+    tracks = []
     for raw in request.events:
         if not isinstance(raw, dict):
             continue
@@ -43,7 +48,67 @@ def ingest_events(request: IngestRequest, db: Session) -> IngestResponse:
         track_id = raw.get("track_id")
         if token and track_id is not None:
             track_aliases[int(track_id)] = str(token)
+            continue
+        
+        etype = str(raw.get("event_type") or "").upper()
+        norm_type = _normalise_event_type(etype)
+        if norm_type in ("ENTRY", "EXIT") and token:
+            entries.append(raw)
+        elif track_id is not None:
+            tracks.append(raw)
 
+    # Match unmatched tracks to entries based on demographics and timestamp
+    for t_raw in tracks:
+        t_track_id = int(t_raw["track_id"])
+        if t_track_id in track_aliases:
+            continue
+
+        t_gender = t_raw.get("gender") or t_raw.get("gender_pred")
+        t_age = t_raw.get("age") or t_raw.get("age_pred")
+        t_ts_str = t_raw.get("timestamp") or t_raw.get("event_timestamp") or t_raw.get("event_time") or t_raw.get("queue_join_ts") or t_raw.get("queue_exit_ts")
+        if not t_gender or t_age is None or not t_ts_str:
+            continue
+
+        try:
+            t_ts = datetime.fromisoformat(str(t_ts_str).replace("Z", "+00:00"))
+        except Exception:
+            continue
+
+        best_entry = None
+        best_time_diff = timedelta(days=1)
+
+        for e_raw in entries:
+            e_token = e_raw.get("id_token") or e_raw.get("visitor_id")
+            if not e_token:
+                continue
+            e_gender = e_raw.get("gender_pred") or e_raw.get("gender")
+            e_age = e_raw.get("age_pred") or e_raw.get("age")
+            e_ts_str = e_raw.get("timestamp") or e_raw.get("event_timestamp") or e_raw.get("event_time")
+            if not e_gender or e_age is None or not e_ts_str:
+                continue
+
+            try:
+                e_ts = datetime.fromisoformat(str(e_ts_str).replace("Z", "+00:00"))
+            except Exception:
+                continue
+
+            # Match rules: same gender, age within 2 years, entry timestamp <= track timestamp
+            if str(t_gender).upper() == str(e_gender).upper():
+                try:
+                    age_diff = abs(int(t_age) - int(e_age))
+                except (ValueError, TypeError):
+                    age_diff = 100
+
+                if age_diff <= 2 and e_ts <= t_ts:
+                    time_diff = t_ts - e_ts
+                    if time_diff < best_time_diff:
+                        best_time_diff = time_diff
+                        best_entry = e_token
+
+        if best_entry:
+            track_aliases[t_track_id] = str(best_entry)
+
+    stores_in_batch = set()
     for idx, raw in enumerate(request.events):
         try:
             event = _parse_event(raw, track_aliases)
@@ -64,6 +129,7 @@ def ingest_events(request: IngestRequest, db: Session) -> IngestResponse:
                 continue
 
             db.add(_event_to_record(event))
+            stores_in_batch.add(event.store_id)
             session = _upsert_session(event, db, seen_sessions)
             if session and session.visited_billing:
                 _try_mark_converted(session, db)
@@ -75,6 +141,9 @@ def ingest_events(request: IngestRequest, db: Session) -> IngestResponse:
 
     try:
         db.commit()
+        now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+        for store_id in stores_in_batch:
+            LAST_INGEST_TIMES[store_id] = now_utc
     except Exception as e:
         db.rollback()
         logger.error("Commit failed: %s", e)
@@ -167,6 +236,11 @@ def _best_cross_camera_session(
                 SessionRecord.is_staff == False,
                 SessionRecord.entry_time.isnot(None),
                 SessionRecord.entry_time <= window_end,
+                or_(
+                    SessionRecord.exit_time.is_(None),
+                    SessionRecord.exit_time >= window_start,
+                    SessionRecord.entry_time >= window_start,
+                )
             )
         ).order_by(SessionRecord.entry_time.asc())
     ).scalars().all()
@@ -179,10 +253,7 @@ def _best_cross_camera_session(
 
     return min(
         candidates.values(),
-        key=lambda session: (
-            _session_last_event_time(session, db) or session.entry_time or event_ts,
-            session.entry_time or event_ts,
-        ),
+        key=lambda session: session.entry_time or event_ts,
     )
 
 
@@ -430,9 +501,10 @@ def load_pos_transactions(csv_path: str, db: Session):
                             "%d-%m-%Y %H:%M:%S",
                         )
                         store_id = normalize_store_id(row["store_id"]) or row["store_id"].strip()
+                        timestamp_naive = (parsed - POS_TIMEZONE_OFFSET).replace(tzinfo=None)
                         orders[tx_id] = {
                             "store_id": store_id,
-                            "timestamp": parsed - POS_TIMEZONE_OFFSET,
+                            "timestamp": timestamp_naive,
                             "basket_value": 0.0,
                         }
                         stores_touched.add(store_id)
@@ -441,7 +513,9 @@ def load_pos_transactions(csv_path: str, db: Session):
                     tx_id = row.get("transaction_id", row.get("invoice_number", "")).strip()
                     if not tx_id or db.get(POSTransaction, tx_id):
                         continue
-                    timestamp = datetime.fromisoformat(row.get("timestamp", "").strip().replace("Z", "+00:00"))
+                    timestamp_raw = row.get("timestamp", "").strip()
+                    timestamp_aware = datetime.fromisoformat(timestamp_raw.replace("Z", "+00:00"))
+                    timestamp = timestamp_aware.astimezone(timezone.utc).replace(tzinfo=None)
                     store_id = normalize_store_id(row["store_id"]) or row["store_id"].strip()
                     db.add(POSTransaction(
                         transaction_id=tx_id,

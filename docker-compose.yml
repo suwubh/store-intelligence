@@ -8,6 +8,7 @@ services:
     environment:
       - DATABASE_URL=sqlite:////data/store_intelligence.db
       - POS_CSV_PATH=/app/dataset/pos_transactions.csv
+      - POS_TIMEZONE_OFFSET_MINUTES=330
     volumes:
       - db_data:/data
       - ./dataset:/app/dataset:ro
