@@ -6,7 +6,7 @@ set -e
 
 STORE_FOLDER=""
 API_URL=""
-DEVICE="cpu"
+DEVICE="auto"
 DATASET="dataset"
 CLIP_START=""
 ALL_STORES=""

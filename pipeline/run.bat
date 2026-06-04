@@ -4,7 +4,7 @@ REM Usage: pipeline\run.bat --store-folder "Store 1" [--api-url http://localhost
 
 set STORE_FOLDER=
 set API_URL=
-set DEVICE=cpu
+set DEVICE=auto
 set DATASET=dataset
 set CLIP_START=
 

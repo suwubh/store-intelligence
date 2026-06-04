@@ -16,6 +16,18 @@ import sys
 import urllib.request
 from pathlib import Path
 
+# Reconfigure stdout/stderr to use UTF-8 to prevent UnicodeEncodeError on Windows
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+if hasattr(sys.stderr, "reconfigure"):
+    try:
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 from pipeline.layout_builder import list_store_clip_dirs, load_store_layout, normalize_store_id
 
 
@@ -25,13 +37,23 @@ CAMERA_ROLE_ORDER = {
     "zone": 1,
     "billing": 2,
 }
+def get_python_executable() -> str:
+    root_dir = Path(__file__).resolve().parent
+    if sys.platform == "win32":
+        venv_python = root_dir / ".venv" / "Scripts" / "python.exe"
+    else:
+        venv_python = root_dir / ".venv" / "bin" / "python"
+    
+    if venv_python.exists():
+        return str(venv_python)
+    return sys.executable
 
 
 def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--store-folder", help='Clip folder name under dataset/clips, e.g. "Store 1"')
     p.add_argument("--all-stores", action="store_true", help="Process every store folder with clips")
-    p.add_argument("--device", default="cpu")
+    p.add_argument("--device", default="auto")
     p.add_argument("--dataset", default="dataset")
     p.add_argument("--api-url", default=None)
     p.add_argument("--clip-start", default=None, help="ISO UTC anchor for timestamps (default: video mtime)")
@@ -85,7 +107,7 @@ def process_store(store_dir: Path, dataset: Path, device: str, api_url: str | No
         print(f"  → {clip_path.name}  |  {cam_id}  |  {out_file.name}")
 
         cmd = [
-            sys.executable, "-m", "pipeline.detect",
+            get_python_executable(), "-m", "pipeline.detect",
             "--video", str(clip_path),
             "--store", store_id,
             "--camera", cam_id,
