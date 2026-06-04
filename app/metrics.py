@@ -126,8 +126,7 @@ def get_store_metrics(id: str, db: Session) -> StoreMetrics:
     ).scalar() or 0
 
     abandon_count = max(explicit_abandon_count, session_abandon_count)
-
-    abandonment_rate = (abandon_count / billing_visitors) if billing_visitors > 0 else 0.0
+    abandonment_rate = min(1.0, abandon_count / billing_visitors) if billing_visitors > 0 else 0.0
 
     return StoreMetrics(
         store_id=store_id,

@@ -94,7 +94,7 @@ def process_store(store_dir: Path, dataset: Path, device: str, api_url: str | No
         print("  Extracting baseline clip-start for store...")
         for clip_path in videos:
             try:
-                dt = get_clip_start_time(None, str(clip_path))
+                dt = get_clip_start_time(None, str(clip_path), False)
                 if dt:
                     clip_start = dt.isoformat()
                     print(f"  → Found baseline clip-start: {clip_start} from {clip_path.name}")

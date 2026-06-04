@@ -1,5 +1,5 @@
 # PROMPT: Generate unit tests for the ingestion and health endpoints of a FastAPI retail intelligence API. Test happy paths, batch size limit constraints of 500, partial ingestion errors on malformed schemas, and stale feed alerts on health monitoring when last event lag exceeds 10 minutes.
-# CHANGES MADE: Extracted common fixtures to conftest.py. Handled mock datetime offsets to simulate event staleness correctly. Added test for dynamic demographic track alias matching.
+# CHANGES MADE: Extracted common fixtures to conftest.py. Handled mock datetime offsets to simulate event staleness correctly. Added test for dynamic demographic track alias matching and asserted timezone conversions for updated POS file loader.
 
 import pytest
 from datetime import datetime, timedelta, timezone
@@ -166,6 +166,8 @@ class TestIngest:
         txn = db_session.get(POSTransaction, "ORD1")
         assert txn is not None
         assert round(txn.basket_value, 2) == 794.10
+        # Assert correct timezone-offset IST-to-UTC conversion (subtracts 330 minutes)
+        assert txn.timestamp == datetime(2026, 4, 10, 6, 45, 5)
 
     def test_dynamic_demographic_track_alias_resolution(self, client, ingest_helper):
         events = [

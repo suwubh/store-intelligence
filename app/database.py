@@ -21,11 +21,14 @@ def set_sqlite_pragma(dbapi_conn, connection_record):
 
 def build_engine(url: str = DATABASE_URL):
     if url.startswith("sqlite"):
-        engine = create_engine(
-            url,
-            connect_args={"check_same_thread": False, "timeout": 15},
-            poolclass=StaticPool,
-        )
+        # Use StaticPool only for in-memory databases (needed for test isolation)
+        is_memory = url == "sqlite://" or url == "sqlite:///:memory:"
+        
+        kwargs = {"connect_args": {"check_same_thread": False, "timeout": 15}}
+        if is_memory:
+            kwargs["poolclass"] = StaticPool
+            
+        engine = create_engine(url, **kwargs)
         event.listen(engine, "connect", set_sqlite_pragma)
     else:
         engine = create_engine(url, pool_pre_ping=True)

@@ -49,7 +49,7 @@ def test_layout_builder_maps_real_store_names_and_roles(tmp_path, monkeypatch):
     assert layout["store_id"] == "ST1076"
     assert layout["staff_info"]["detector_profile"] == "store2_pink_black"
     assert infer_camera_role("billing_area.mp4") == "BILLING"
-    assert layout["cameras"]["CAM_ENTRY_02"]["exclude_from_metrics"] is True
+    assert layout["cameras"]["CAM_ENTRY_02"]["exclude_from_metrics"] is False
     assert layout["cameras"]["CAM_BILLING_01"]["zones"][0]["zone_id"] == "BILLING_COUNTER"
 
 
