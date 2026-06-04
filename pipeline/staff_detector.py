@@ -32,7 +32,14 @@ STORE2_BLACK_RATIO_THRESHOLD = 0.22
 
 class StaffDetector:
     def __init__(self, uniform_ranges: Optional[list] = None, store_id: str | None = None):
-        self.store_id = (store_id or "").upper()
+        import re
+        norm = re.sub(r"[^A-Za-z0-9]+", "_", (store_id or "")).strip("_").upper()
+        if "1076" in norm or "BLR_002" in norm or "STORE_2" in norm or norm == "ST1076":
+            self.store_id = "ST1076"
+        elif "1008" in norm or "BLR_001" in norm or "STORE_1" in norm or norm == "ST1008":
+            self.store_id = "ST1008"
+        else:
+            self.store_id = norm
         self.uniform_ranges = uniform_ranges or BLACK_UNIFORM_RANGES
 
     def is_staff(self, frame: np.ndarray, bbox: list) -> bool:

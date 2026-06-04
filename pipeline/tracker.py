@@ -410,3 +410,4 @@ class _ByteTrackArgs:
     match_thresh = 0.8
     fuse_score = True
     mot20 = False
+    gmc_method = "sparseOptFlow"
