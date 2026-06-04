@@ -57,10 +57,14 @@ def parse_args():
     p.add_argument("--dataset", default="dataset")
     p.add_argument("--api-url", default=None)
     p.add_argument("--clip-start", default=None, help="ISO UTC anchor for timestamps (default: video mtime)")
+    ocr_group = p.add_mutually_exclusive_group()
+    ocr_group.add_argument("--use-ocr", dest="use_ocr", action="store_true", help="Attempt to extract clip-start timestamp using OCR")
+    ocr_group.add_argument("--no-ocr", dest="use_ocr", action="store_false", help="Do not attempt OCR")
+    p.set_defaults(use_ocr=True)
     return p.parse_args()
 
 
-def process_store(store_dir: Path, dataset: Path, device: str, api_url: str | None, clip_start: str | None):
+def process_store(store_dir: Path, dataset: Path, device: str, api_url: str | None, clip_start: str | None, use_ocr: bool = True):
     layout = load_store_layout(store_dir)
     store_id = layout["store_id"]
     layout_path = store_dir / "store_layout.json"
@@ -94,7 +98,7 @@ def process_store(store_dir: Path, dataset: Path, device: str, api_url: str | No
         print("  Extracting baseline clip-start for store...")
         for clip_path in videos:
             try:
-                dt = get_clip_start_time(None, str(clip_path), False)
+                dt = get_clip_start_time(None, str(clip_path), use_ocr)
                 if dt:
                     clip_start = dt.isoformat()
                     print(f"  → Found baseline clip-start: {clip_start} from {clip_path.name}")
@@ -133,6 +137,8 @@ def process_store(store_dir: Path, dataset: Path, device: str, api_url: str | No
         ]
         if clip_start:
             cmd += ["--clip-start", clip_start]
+        if use_ocr:
+            cmd += ["--use-ocr"]
         if api_url:
             cmd += ["--api-url", api_url]
 
@@ -221,7 +227,7 @@ def main():
     grand_total = 0
     for store_dir in targets:
         grand_total += process_store(
-            store_dir, dataset, args.device, args.api_url, args.clip_start
+            store_dir, dataset, args.device, args.api_url, args.clip_start, args.use_ocr
         )
 
     print()

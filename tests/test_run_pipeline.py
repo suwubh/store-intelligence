@@ -22,11 +22,24 @@ def test_event_file_sort_key():
     assert _event_file_sort_key(Path("store_floor_events.jsonl")) == (1, "store_floor_events.jsonl")
 
 def test_parse_args(monkeypatch):
-    monkeypatch.setattr("sys.argv", ["run_pipeline.py", "--store-folder", "Store 1", "--all-stores", "--api-url", "http://localhost:8000"])
+    monkeypatch.setattr("sys.argv", ["run_pipeline.py", "--store-folder", "Store 1", "--all-stores", "--api-url", "http://localhost:8000", "--use-ocr"])
     args = parse_args()
     assert args.store_folder == "Store 1"
     assert args.all_stores is True
     assert args.api_url == "http://localhost:8000"
+    assert args.use_ocr is True
+
+
+def test_parse_args_default_use_ocr(monkeypatch):
+    monkeypatch.setattr("sys.argv", ["run_pipeline.py", "--store-folder", "Store 1"])
+    args = parse_args()
+    assert args.use_ocr is True
+
+
+def test_parse_args_no_ocr(monkeypatch):
+    monkeypatch.setattr("sys.argv", ["run_pipeline.py", "--store-folder", "Store 1", "--no-ocr"])
+    args = parse_args()
+    assert args.use_ocr is False
 
 def test_get_python_executable():
     exec_path = get_python_executable()
@@ -70,8 +83,11 @@ def test_process_store(mock_get_clip, mock_load_layout, mock_subprocess_run, tmp
     
     mock_subprocess_run.side_effect = side_effect
     
-    total = process_store(store_dir, tmp_path, "cpu", None, None)
+    total = process_store(store_dir, tmp_path, "cpu", None, None, use_ocr=True)
     assert total == 1
+    assert mock_subprocess_run.call_args is not None
+    called_cmd = mock_subprocess_run.call_args.args[0]
+    assert "--use-ocr" in called_cmd
 
 @patch("urllib.request.urlopen")
 def test_ingest_store_events(mock_urlopen, tmp_path):
